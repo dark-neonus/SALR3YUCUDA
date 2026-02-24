@@ -30,27 +30,34 @@ Numerically solves a system of nonlinear integral equations (mean-field DFT) des
 ├── output/             # Runtime data (git-ignored)
 ├── studying/           # Standalone CUDA learning examples (separate)
 ├── docs/BUILD.md       # Build instructions
+├── run.sh              # One-shot build-and-run script (see below)
 ├── CMakeLists.txt      # CMake build (pure C)
 └── Makefile            # Alternative Make build (pure C)
 ```
 
 ## Build & run
 
-Requires: **CMake ≥ 3.12** (or GNU Make) and a **C11 compiler** (gcc).
+Requires: **CMake ≥ 3.12** and a **C11 compiler** (gcc / clang).
+
+### Quick start — `run.sh`
 
 ```bash
-# CMake build
-mkdir build && cd build
-cmake ..
-make
+./run.sh              # build + run simulation + run all tests (default)
+./run.sh build        # configure & compile only
+./run.sh sim          # build + run main simulation
+./run.sh tests        # build + run all test binaries
+./run.sh clean        # delete the build/ directory
+```
 
-# — or — simple Make build
-make
+The script always (re-)runs CMake before building, so it is safe to call after any source or config change.
 
-# Run
+### Manual build
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+
 ./build/salr_dft configs/default.cfg
-
-# Run tests
 ./build/test_solver
 ./build/test_potential
 ```
@@ -63,11 +70,10 @@ The simulation is controlled via `.cfg` files. Key sections:
 
 | Section | Parameters | Description |
 |---------|-----------|-------------|
-| `[grid]` | `nx`, `ny`, `Lx`, `Ly` | Computational grid size and physical domain |
-| `[potential]` | `epsilon_attract`, `sigma_attract`, `epsilon_repulse`, `sigma_repulse` | SALR pair potential parameters |
-| `[interaction]` | `A11`, `A12`, `A22` | Direct correlation function matrix (coupling coefficients) |
-| `[physics]` | `temperature`, `bulk_density` | Thermodynamic state |
-| `[solver]` | `max_iterations`, `tolerance`, `mixing_param` | Picard iteration control |
+| `[grid]` | `nx`, `ny`, `Lx`, `Ly`, `dx`, `dy` | Computational grid size and physical domain |
+| `[physics]` | `temperature`, `rho1`, `rho2`, `cutoff_radius` | Thermodynamic state and interaction cutoff |
+| `[interaction]` | `A_ij_m`, `a_ij_m` (i,j∈{1,2}, m∈{1,2,3}) | 3-Yukawa amplitude and decay-rate matrices |
+| `[solver]` | `max_iterations`, `tolerance`, `xi1`, `xi2` | Picard iteration control |
 | `[output]` | `output_dir`, `save_every` | Output file settings |
 
 ## Roadmap

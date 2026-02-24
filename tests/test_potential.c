@@ -9,7 +9,7 @@
 
 int main(void) {
     printf("=== Potential Tests ===\n");
-    /* TODO: test potential_salr() against known values */
+    /* TODO: test potential_u(i, j, r, &p) against known analytical values */
     printf("No tests implemented yet.\n");
     return 0;
 }
