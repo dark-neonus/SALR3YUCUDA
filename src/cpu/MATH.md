@@ -187,6 +187,77 @@ $\rho_1(x_i, y_j)$ and $\rho_2(x_i, y_j)$.  The arrays `U11`, `U12`, `U22`,
 
 ---
 
+## 4b. Initial Density Fields
+**File:** `src/main.c` (executed *before* `solver_run_binary` is called)
+
+**Slide:** *"Spatial density distributions"* — the solver must start away from the
+trivial homogeneous fixed point to converge to the structured (stripe/cluster) solution.
+
+> **Note:** this section is in `main.c`, not in `solver_cpu.c`. `solver_run_binary`
+> receives the already-initialised `rho1`/`rho2` arrays; it does not set up the IC itself.
+
+```c
+double rho1_hi = cfg.rho1 * 1.25;   /* 25 % above mean */
+double rho1_lo = cfg.rho1 * 0.75;   /* 25 % below mean */
+double rho2_hi = cfg.rho2 * 1.25;
+double rho2_lo = cfg.rho2 * 0.75;
+
+srand(42);
+for (int iy = 0; iy < Ny; ++iy) {
+    for (int ix = 0; ix < Nx; ++ix) {
+        double noise = 0.05 * (2.0 * rand()/(double)RAND_MAX - 1.0);
+        size_t k = (size_t)(iy * Nx + ix);
+        if (ix < Nx / 2) {
+            r1[k] = rho1_hi * (1.0 + noise);   /* species-1-rich half */
+            r2[k] = rho2_lo * (1.0 + noise);
+        } else {
+            r1[k] = rho1_lo * (1.0 + noise);   /* species-2-rich half */
+            r2[k] = rho2_hi * (1.0 + noise);
+        }
+        if (r1[k] < 1e-6) r1[k] = 1e-6;       /* positivity guard */
+        if (r2[k] < 1e-6) r2[k] = 1e-6;
+    }
+}
+```
+
+### Why a striped IC is necessary
+
+The EL fixed-point equations have (at least) two solutions:
+
+1. **Trivial / homogeneous**: $\rho_i(\mathbf{r}) = \rho_{i,b}$ everywhere.
+   This always satisfies $K_i[\rho] = \rho_{i,b} \cdot e^0 = \rho_{i,b}$, so
+   a perfectly uniform initial condition converges immediately with zero error — a
+   **spurious result**.
+
+2. **Structured**: the true stripe/cluster solution we want.
+
+Because both basins of attraction exist, the IC must be *far enough* from the
+homogeneous solution to fall into the structured basin.
+
+### Half-space stripe seed
+
+The x-axis is split into two halves with anti-correlated densities:
+
+$$\rho_1^{(0)}(x_i, y_j) = \begin{cases}
+1.25\,\rho_{1,b}\,(1 + \eta_{ij}) & x_i < L_x/2 \\
+0.75\,\rho_{1,b}\,(1 + \eta_{ij}) & x_i \ge L_x/2
+\end{cases}$$
+
+$$\rho_2^{(0)}(x_i, y_j) = \begin{cases}
+0.75\,\rho_{2,b}\,(1 + \eta_{ij}) & x_i < L_x/2 \\
+1.25\,\rho_{2,b}\,(1 + \eta_{ij}) & x_i \ge L_x/2
+\end{cases}$$
+
+where $\eta_{ij} \in [-0.05, 0.05]$ is a reproducible pseudo-random noise sample (`srand(42)`).
+
+- **Conservation of mean**: $(1.25 + 0.75)/2 = 1.0$, so $\langle\rho_i^{(0)}\rangle = \rho_{i,b}$.
+- **Noise amplitude 5 %**: breaks the exact left-right mirror symmetry so the stripe
+  is free to tilt diagonally (matching the slide images).
+- **Positivity guard**: clamps any negative-noise cell to $10^{-6}$ to prevent
+  the exponential in `compute_K` from diverging.
+
+---
+
 ## 5. Initial Boundary Mask
 **Function:** `apply_boundary_mask`
 
@@ -325,6 +396,54 @@ The old function `update_density` combined the two $\Phi$ components into a sing
 array and had $\beta$ baked in; the refactored `compute_K` receives the two components
 explicitly and multiplies by `beta` here, making the formula a direct transcription of
 the slide. The array `K1`/`K2` name maps to $K_1[\cdot]$/$K_2[\cdot]$ from the slide.
+
+---
+
+## 7b. Chemical-Potential Renormalisation (Mass-Conservation Fix)
+
+**Location:** `solver_run_binary`, immediately after both `compute_K` calls
+
+**Bug (without this step):** The EL operator written in section 7 fixes the chemical
+potential $\mu_i$ at its *bulk* value:
+
+$$\mu_i^{\text{bulk}} = \frac{1}{\beta}\ln(\rho_{i,b}) + \Phi_{i,b}$$
+
+where $\Phi_{i,b} = \Phi_{ii,b} + \Phi_{ij,b}$ is the bulk interaction scalar from step 3.
+The normalisation is exact only when $\rho_i(\mathbf{r}) = \rho_{i,b}$ everywhere.
+Once the density field is inhomogeneous, **Jensen's inequality** gives:
+
+$$\Bigl\langle \exp\!\bigl(-\beta\,\Phi_i\bigr) \Bigr\rangle \;\ge\; \exp\!\Bigl(-\beta\,\langle\Phi_i\rangle\Bigr)$$
+
+so $\langle K_i \rangle > \rho_{i,b}$.  Each iteration the total mass drifts upward;
+the exponential amplifies the growing inhomogeneity; within ~30–40 iterations the field
+diverges: near-zero density almost everywhere with isolated spikes exceeding $10^2$
+(observed in the visualization browser at T=6).
+
+**Thermodynamically correct fix:** the EL equation requires $\mu_i$ to be the *dynamic*
+Lagrange multiplier that pins the global density constraint every iteration:
+
+$$\rho_i(\mathbf{r}) = \frac{\rho_{i,b}}{\langle\exp(-\beta\Phi_i)\rangle}\;\exp\!\bigl(-\beta\,\Phi_i(\mathbf{r})\bigr), \qquad \langle\cdot\rangle = \frac{1}{N}\sum_{\mathbf{r}}$$
+
+After `compute_K` already evaluated the exponential, the dynamic chemical potential is
+applied as a post-hoc rescaling:
+
+$$K_i(\mathbf{r}) \;\leftarrow\; K_i(\mathbf{r})\;\times\; \frac{N\,\rho_{i,b}}{\displaystyle\sum_{\mathbf{r}'} K_i(\mathbf{r}')}$$
+
+In code:
+
+```c
+double s1 = 0.0, s2 = 0.0;
+for (size_t k = 0; k < N; ++k) { s1 += K1[k]; s2 += K2[k]; }
+double norm1 = ((double)N * rho1_b) / s1;
+double norm2 = ((double)N * rho2_b) / s2;
+for (size_t k = 0; k < N; ++k) { K1[k] *= norm1; K2[k] *= norm2; }
+```
+
+**In the bulk:** $\sum K_i = N\,\rho_{i,b}$, so `norm = 1` and the step is a no-op.
+
+**Away from the bulk:** `norm` < 1 (downcorrection) keeps the spatially-averaged density
+exactly at $\rho_{i,b}$ at every iteration, preventing the exponential blow-up and
+allowing convergence at temperatures well below the spinodal.
 
 ---
 

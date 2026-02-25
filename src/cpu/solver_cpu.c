@@ -400,6 +400,43 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         compute_K(Phi21, Phi22, Phi21b, Phi22b, rho2_b, beta, K2, N);
 
         /*
+         * --- Step 2b: Renormalise K_i to enforce global mass conservation ---
+         *
+         * The EL operator K_i = rho_{i,b} * exp(-beta*(Phi_i - Phi_i^b)) fixes
+         * the chemical potential using the BULK reference value Phi_i^b.  Once
+         * the density field becomes inhomogeneous this is only an approximation:
+         * by Jensen's inequality  <exp(x)> >= exp(<x>), so
+         *
+         *   (1/N) * sum_r K_i(r)  >=  rho_{i,b}                             (*)
+         *
+         * Every iteration the total mass therefore drifts upward, the
+         * exponential amplifies the inhomogeneity, and the field blows up
+         * (observed as near-zero density almost everywhere plus isolated spikes).
+         *
+         * The thermodynamically correct fix is to determine the chemical
+         * potential mu_i dynamically each iteration so that the density
+         * constraint  (1/N)*sum rho_i = rho_{i,b}  is satisfied exactly.
+         * In practice this means rescaling K_i after the exponential:
+         *
+         *   K_i(r) → K_i(r) * ( N * rho_{i,b} / sum_r K_i(r) )
+         *
+         * which is equivalent to:
+         *   mu_i = (1/beta) * log( rho_{i,b} / <exp(-beta*Phi_i)> )
+         *
+         * In the bulk (uniform rho) the rescaling factor equals 1 and the two
+         * formulations are identical.  Away from the bulk the dynamic mu_i
+         * keeps the total mass pinned at its physical value and prevents the
+         * exponential blow-up described above.
+         */
+        {
+            double s1 = 0.0, s2 = 0.0;
+            for (size_t k = 0; k < N; ++k) { s1 += K1[k]; s2 += K2[k]; }
+            double norm1 = ((double)N * rho1_b) / s1;
+            double norm2 = ((double)N * rho2_b) / s2;
+            for (size_t k = 0; k < N; ++k) { K1[k] *= norm1; K2[k] *= norm2; }
+        }
+
+        /*
          * --- Step 3: Convergence check (slide "Numerical computation method")
          * Must be done BEFORE mixing while rho_i^(t) is still in rho1/rho2:
          *   ||rho_i^(t+1) - rho_i^(t)|| = xi_i * ||K_i - rho_i^(t)||  < epsilon

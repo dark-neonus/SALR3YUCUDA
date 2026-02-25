@@ -33,6 +33,15 @@ do_build() {
 do_sim() {
     _bold ">>> Running simulation: salr_dft"
     _cyan "    config: $CONFIG"
+    # Clear previous results so stale snapshots from a longer run are not mixed
+    # with the new one.  Preserve the output directory itself.
+    local out_dir
+    out_dir="$PROJECT_ROOT/output"
+    if compgen -G "$out_dir/density_species*.dat" > /dev/null 2>&1 || \
+       [[ -f "$out_dir/convergence.dat" ]]; then
+        _cyan "    clearing previous output in $out_dir/ ..."
+        rm -f "$out_dir"/density_species*.dat "$out_dir"/convergence.dat
+    fi
     "$BUILD_DIR/salr_dft" "$CONFIG"
     _green "Simulation finished."
 }
