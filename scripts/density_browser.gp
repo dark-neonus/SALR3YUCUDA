@@ -18,6 +18,11 @@
 #   0-9 then Enter        type frame number and press Enter to jump
 #   c                     toggle colour clipping (bulk scale <-> full auto)
 #   q                     quit
+#   v                     cycle view mode: scatter+heat | scatter only | heat only
+#
+# LAYOUT (default)
+#   Top row:    3D scatter  rho_1 | rho_2 | rho_1+rho_2
+#   Bottom row: 2D heatmap  rho_1 | rho_2 | rho_1+rho_2
 #
 # COLOUR MODES
 #   Clipped (default): cbrange [0, 3*mean(rho)] — dilute background is
@@ -59,16 +64,18 @@ print sprintf("Loaded %d frames.", N)
 CB_SCALE  = 3.0
 rho1_mean = real(system("awk 'NR>1{s+=$3;n++}END{printf \"%.6f\",s/n}' ".word(files1,1)))
 rho2_mean = real(system("awk 'NR>1{s+=$3;n++}END{printf \"%.6f\",s/n}' ".word(files2,1)))
-cb1_clip  = CB_SCALE * rho1_mean
-cb2_clip  = CB_SCALE * rho2_mean
+cb1_clip   = CB_SCALE * rho1_mean
+cb2_clip   = CB_SCALE * rho2_mean
+cb_mix_clip = CB_SCALE * (rho1_mean + rho2_mean)
 print sprintf("  rho1 mean=%.4f  colour clip=[0,%.3f]", rho1_mean, cb1_clip)
 print sprintf("  rho2 mean=%.4f  colour clip=[0,%.3f]", rho2_mean, cb2_clip)
+print sprintf("  rho_mix mean=%.4f  colour clip=[0,%.3f]", rho1_mean+rho2_mean, cb_mix_clip)
 
 # clip_mode=1 (default) = fixed cbrange; clip_mode=0 = auto full range
 clip_mode = 1
 
 # ── Terminal & appearance ──────────────────────────────────────────────────
-set terminal qt size 1450,720 enhanced font "Sans,10" title "SALR Density Browser"
+set terminal qt size 2100,900 enhanced font "Sans,10" title "SALR Density Browser"
 set xlabel "x" font ",10"
 set ylabel "y" font ",10"
 set zlabel "{/Symbol r}" rotate font ",10"
@@ -76,27 +83,77 @@ set ticslevel 0
 set key off
 set palette defined (0 "#440154", 0.25 "#31688e", 0.50 "#35b779", 0.75 "#fde725", 1.0 "#ff4400")
 
-# ── Draw macro ────────────────────────────────────────────────────────────
-# Variables read at eval time: idx, files1, files2, N, clip_mode, cb1_clip, cb2_clip
+# ── Draw macro (browser: 2×3 multiplot) ─────────────────────────────────────
+# Layout:   row 1 = 3D scatter   rho1 | rho2 | rho1+rho2
+#           row 2 = 2D heatmap   rho1 | rho2 | rho1+rho2
+#
+# Heatmaps use `set pm3d map` (bilinear interpolation) instead of `w image`
+# so the display is smooth even when the data has small residual pixel-scale
+# variation.
+#
+# fmix = shell `paste f1 f2`; columns after paste: 1=x 2=y 3=rho1 4=x 5=y 6=rho2
 DRAW = \
   "f1=word(files1,idx); f2=word(files2,idx);" \
+. "fmix='< paste '.f1.' '.f2;" \
 . "lbl=(strstrt(f1,'final')>0?'FINAL':sprintf('iter %d',int(real(system(\"echo '\" .f1. \"' | grep -oP '(?<=iter_)[0-9]+'\")))));" \
-. "cmstr=(clip_mode?sprintf('clipped [0,%.2g/%.2g]',cb1_clip,cb2_clip):'auto');" \
-. "set multiplot layout 1,2 title sprintf('Frame %d/%d  --  %s   colour:%s   n/p +/-1   ]/[ +/-10   N/P +/-100   f/l first/last   0-9+Entr goto   c colour   q quit',idx,N,lbl,cmstr) font ',10';" \
-. "set title '{/Symbol r}_1   species 1' font ',11';" \
+. "cmstr=(clip_mode?'clipped':'auto');" \
+. "set multiplot layout 2,3 title sprintf('Frame %d/%d  --  %s  colour:%s   n/p+/-1  ]/[+/-10  N/P+/-100  f/l  0-9+Entr goto  c colour  R rotate  q quit',idx,N,lbl,cmstr) font ',10';" \
+. "set xlabel 'x'; set ylabel 'y'; set zlabel '{/Symbol r}' rotate; set ticslevel 0; set view 60,30;" \
+. "set title '{/Symbol r}_1   scatter' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb1_clip] } else { set cbrange [*:*] };" \
 . "splot f1 u 1:2:3:3 w p pt 7 ps 0.45 lc palette notitle;" \
-. "set title '{/Symbol r}_2   species 2' font ',11';" \
+. "set title '{/Symbol r}_2   scatter' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb2_clip] } else { set cbrange [*:*] };" \
 . "splot f2 u 1:2:3:3 w p pt 7 ps 0.45 lc palette notitle;" \
-. "unset multiplot"
+. "set title '{/Symbol r}_1+{/Symbol r}_2   scatter' font ',11';" \
+. "if (clip_mode) { set cbrange [0:cb_mix_clip] } else { set cbrange [*:*] };" \
+. "splot fmix u 1:2:(\$3+\$6):(\$3+\$6) w p pt 7 ps 0.45 lc palette notitle;" \
+. "unset zlabel; unset view; set xlabel 'x'; set ylabel 'y'; set pm3d map;" \
+. "set title '{/Symbol r}_1   heatmap' font ',11';" \
+. "if (clip_mode) { set cbrange [0:cb1_clip] } else { set cbrange [*:*] };" \
+. "splot f1 u 1:2:3 notitle;" \
+. "set title '{/Symbol r}_2   heatmap' font ',11';" \
+. "if (clip_mode) { set cbrange [0:cb2_clip] } else { set cbrange [*:*] };" \
+. "splot f2 u 1:2:3 notitle;" \
+. "set title '{/Symbol r}_1+{/Symbol r}_2   heatmap' font ',11';" \
+. "if (clip_mode) { set cbrange [0:cb_mix_clip] } else { set cbrange [*:*] };" \
+. "splot fmix u 1:2:(\$3+\$6) notitle;" \
+. "unset pm3d; unset multiplot; set view 60,30; set ticslevel 0; set zlabel '{/Symbol r}' rotate"
+
+# ── Rotation mode (full-window 3D) ──────────────────────────────────────────
+# Draws all three species in a single full-window splot so the user can freely
+# click-and-drag to rotate.  Any keyboard press returns to the browser.
+DRAW_ROT = \
+  "f1=word(files1,idx); f2=word(files2,idx);" \
+. "fmix='< paste '.f1.' '.f2;" \
+. "lbl=(strstrt(f1,'final')>0?'FINAL':sprintf('iter %d',int(real(system(\"echo '\" .f1. \"' | grep -oP '(?<=iter_)[0-9]+'\")))));" \
+. "set title sprintf('[ROTATE MODE]  Frame %d/%d  %s    any key -> browser',idx,N,lbl) font ',11';" \
+. "set xlabel 'x'; set ylabel 'y'; set zlabel '{/Symbol r}' rotate; set ticslevel 0; set key top right;" \
+. "if (clip_mode) { set cbrange [0:cb_mix_clip] } else { set cbrange [*:*] };" \
+. "splot f1 u 1:2:3:3 w p pt 7 ps 0.40 lc palette title '{/Symbol r}_1'," \
+. "      f2 u 1:2:3:3 w p pt 6 ps 0.40 lc palette title '{/Symbol r}_2';" \
+. "unset key"
 
 # ── Event loop ────────────────────────────────────────────────────────────
-# MOUSE_CHAR  = string for printable keys  ("n", "p", "q", "]", "[", ...)
-# MOUSE_KEY   = X11 keysym integer for special keys:
+# `pause mouse any` (not `keypress`) lets mouse events return the pause so
+# the Qt window stays responsive.  Mouse events (button press/release, motion,
+# scroll wheel) all have MOUSE_CHAR=="" and MOUSE_KEY < 65000 — these are
+# filtered to no-ops so gnuplot can handle rotation/pan internally without the
+# browser redrawing and resetting the view.  Real keyboard special keys
+# (arrows, Home, End, PageUp/Down, Return) have kc >= 65000 and still work.
+#
+# To rotate a 3D scatter panel: simply click-and-drag it. The browser stays
+# out of the way. Press any letter/nav key to resume frame navigation
+# (which calls DRAW and resets the view to the full 2×3 layout).
+#
+# 'R' enters an explicit rotation mode: full-window splot of rho1+rho2,
+# free rotation.  Any keypress in rotation mode returns to the 2×3 browser.
+#
+# MOUSE_KEY integers (X11 keysyms):
 #   65361=Left  65363=Right  65360=Home  65367=End
 #   65365=PageUp  65366=PageDown  65293=Return
-idx    = 1
+rot_mode = 0   # 0 = browser, 1 = full-window rotation view
+idx = 1
 eval DRAW
 
 goto_n  = 0   # digit accumulator for goto-frame
@@ -104,13 +161,33 @@ has_dig = 0   # whether any digit has been typed since last non-digit
 
 running = 1
 while (running) {
-    pause mouse keypress
+    pause mouse any
 
     kc = int(MOUSE_KEY)
     ch = MOUSE_CHAR
 
-    # ── Digit accumulator: type a number, then press Enter to jump ─────────
-    # strstrt("0123456789", ch) > 0  is true iff ch is exactly one digit.
+    # Mouse event filter: skip all mouse-device events so gnuplot can handle
+    # rotation/pan internally without re-drawing.
+    #
+    # Mouse motion:          MOUSE_CHAR="" MOUSE_KEY=0
+    # Mouse button press:    MOUSE_CHAR="" MOUSE_KEY=1/2/3
+    # Mouse scroll wheel:    MOUSE_CHAR="" MOUSE_KEY=4/5
+    # All these have ch=="" AND kc < 65000.
+    #
+    # Real keyboard special keys (arrows, Home, End, PageUp/Down, Return)
+    # all have kc >= 65000 (X11 keysyms), so they still pass through.
+    # Printable keys always have ch != "" so they pass regardless.
+    if (ch eq "" && kc < 65000) {
+        # no-op: gnuplot already handled the mouse event (rotation/pan)
+    } else {
+
+    # ── In rotation mode any keypress returns to browser ─────────────────
+    if (rot_mode) {
+        rot_mode = 0
+        eval DRAW
+    } else {
+
+    # ── Digit accumulator and navigation (browser mode only) ─────────────
     if (strlen(ch) == 1 && strstrt("0123456789", ch) > 0) {
         goto_n  = goto_n * 10 + int(real(ch))
         has_dig = 1
@@ -174,9 +251,16 @@ while (running) {
             clip_mode = 1 - clip_mode
             eval DRAW
         }
+        # enter rotation mode
+        if (ch eq "R" || ch eq "r") {
+            rot_mode = 1
+            eval DRAW_ROT
+        }
         # quit
         if (ch eq "q" || ch eq "Q") {
             running = 0
         }
-    }
+      }  # end digit else (navigation block)
+    }  # end browser-mode block (rot_mode else)
+    }  # end mouse-event filter (mouse-only else)
 }
