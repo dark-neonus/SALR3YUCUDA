@@ -75,7 +75,26 @@ print sprintf("  rho_mix mean=%.4f  colour clip=[0,%.3f]", rho1_mean+rho2_mean, 
 clip_mode = 1
 
 # ── Terminal & appearance ──────────────────────────────────────────────────
-set terminal qt size 2100,900 enhanced font "Sans,10" title "SALR Density Browser"
+# Interactive terminals: try x11, wxt, qt in order of preference
+# If none work, this script requires gnuplot with interactive terminal support
+if (strstrt(GPVAL_TERMINALS, "x11")) {
+    set terminal x11 size 2100,900 enhanced font "Sans,10" title "SALR Density Browser"
+} else {
+    if (strstrt(GPVAL_TERMINALS, "wxt")) {
+        set terminal wxt size 2100,900 enhanced font "Sans,10" title "SALR Density Browser"
+    } else {
+        if (strstrt(GPVAL_TERMINALS, "qt")) {
+            set terminal qt size 2100,900 enhanced font "Sans,10" title "SALR Density Browser"
+        } else {
+            print "ERROR: No interactive terminal available (x11, wxt, or qt)"
+            print "Your gnuplot installation only has file output terminals."
+            print ""
+            print "SOLUTION: Use the Python visualization instead:"
+            print "  python3 scripts/plot_joint_heatmap.py output/"
+            exit
+        }
+    }
+}
 set xlabel "x" font ",10"
 set ylabel "y" font ",10"
 set zlabel "{/Symbol r}" rotate font ",10"
@@ -159,12 +178,15 @@ eval DRAW
 goto_n  = 0   # digit accumulator for goto-frame
 has_dig = 0   # whether any digit has been typed since last non-digit
 
+kc = 0        # initialize keyboard code variable
+ch = ""       # initialize character variable
+
 running = 1
 while (running) {
     pause mouse any
 
-    kc = int(MOUSE_KEY)
-    ch = MOUSE_CHAR
+    if (exists("MOUSE_KEY")) { kc = int(MOUSE_KEY) } else { kc = 0 }
+    if (exists("MOUSE_CHAR")) { ch = MOUSE_CHAR } else { ch = "" }
 
     # Mouse event filter: skip all mouse-device events so gnuplot can handle
     # rotation/pan internally without re-drawing.

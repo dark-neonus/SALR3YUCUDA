@@ -64,20 +64,39 @@ cmake --build build --parallel
 
 ### Visualisation
 
-After a completed run, plot the density profiles and convergence curve:
+After a completed run, visualize the results:
 
+**Recommended: Python visualization (matplotlib)**
+```bash
+# Two-color joint heatmap (blue=species1, red=species2, purple=both)
+python3 scripts/plot_joint_heatmap.py output/
+
+# Individual species heatmaps (requires gnuplot)
+python3 scripts/plot_density.py output/
+```
+
+Requires: **Python 3** with **matplotlib** and **numpy**.  
+Produces: `output/joint_heatmap_final.png` showing both species in a single visualization.
+
+**Alternative: Gnuplot individual plots**
 ```bash
 python3 scripts/plot_density.py output/
 ```
 
-Requires **gnuplot ≥ 5.0** on `PATH` (no Python packages beyond the standard library).
-Produces `output/density_species1_final.png`, `output/density_species2_final.png`,
-and `output/convergence.png`.  Each plot also saves a `.gp` script for manual re-use.
+Requires **gnuplot ≥ 5.0** with png output support.  
+Produces individual PNGs for each species and convergence plot.
 
-> **Note on physics:** At `temperature = 12.0` (default) the system is in the
+⚠️ **Known Issues with gnuplot:**
+- **Snap library conflict:** `symbol lookup error: libpthread.so.0` — use Python visualization instead
+- **No interactive terminals:** If your gnuplot lacks x11/wxt/qt, the interactive browser (`density_browser.gp`) won't work
+
+> **Recommended:** Always use `plot_joint_heatmap.py` — it's more reliable and produces better visualizations.
+
+> **Note on physics:** At `temperature = 12.0` (default in some configs) the system is in the
 > high-temperature disordered phase, so the converged density is nearly uniform.
-> Structured (cluster/lamellar) phases emerge at lower temperatures; lower `T`
-> and adjust the mixing coefficients `xi1`/`xi2` downward for better stability.
+> Structured (cluster/lamellar) phases emerge at lower temperatures. For structure formation,
+> use `T = 2.0` and adjust the mixing coefficients `xi1=0.05`/`xi2=0.05` for stability.
+> See [docs/BUG_REPORT.md](docs/BUG_REPORT.md) for details.
 
 > Full instructions: [docs/BUILD.md](docs/BUILD.md)
 

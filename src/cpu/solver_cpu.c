@@ -47,7 +47,11 @@
 
 #include <stdlib.h>
 #include <string.h>
+#define _USE_MATH_DEFINES
 #include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include <stdio.h>
 
 #include "../../include/solver.h"
@@ -192,8 +196,15 @@ static void compute_K(const double *Phi_a,  const double *Phi_b,
                       double Phi_ab,        double Phi_bb,
                       double rho0b,         double beta,
                       double *K,            size_t N) {
-    for (size_t k = 0; k < N; ++k)
-        K[k] = rho0b * exp(-beta * (Phi_a[k] + Phi_b[k] - Phi_ab - Phi_bb));
+    for (size_t k = 0; k < N; ++k) {
+        double arg = -beta * (Phi_a[k] + Phi_b[k] - Phi_ab - Phi_bb);
+        /* Clamp the exponent to prevent floating-point overflow/underflow.
+         * exp(+500) ≈ 1e217 (finite), exp(-500) ≈ 1e-217 (tiny but nonzero).
+         * Without clamping, early-iteration noise can produce ±Inf or 0. */
+        if (arg >  500.0) arg =  500.0;
+        if (arg < -500.0) arg = -500.0;
+        K[k] = rho0b * exp(arg);
+    }
 }
 
 /* ── Boundary mask ───────────────────────────────────────────────────────── */
@@ -389,6 +400,10 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
      *
      * These scalars fix the chemical potential so rho_i → rho_{i,b} in bulk.
      * cfg->rho1 = rho_{1,b},  cfg->rho2 = rho_{2,b}.
+     *
+     * IMPORTANT: Φ(r) and Φ_b must use CONSISTENT methods.
+     * Since Φ(r) is computed numerically on the grid, Φ_b must also be numerical
+     * (sum over the potential table) for consistency.
      */
     double sum_U11 = 0.0, sum_U12 = 0.0, sum_U22 = 0.0;
     for (size_t k = 0; k < N; ++k) {
@@ -507,17 +522,9 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         /* --- Step 5: Enforce boundary conditions on mixed density --- */
         apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
 
-        /*
-         * --- Step 5b: Anti-checkerboard smoothing ---
-         * One step of 5-point Laplacian (strength SMOOTH_EPS = 0.01) per
-         * iteration damps the grid-Nyquist mode factor ~0.92 per step while
-         * leaving physical SALR wavelengths (λ ≫ dx) essentially unchanged.
-         * See smooth_density() doc-comment for the full derivation.
-         */
+        /* Step 5b: Gentle smoothing to prevent checkerboard instability */
         smooth_density(rho1, Nx, Ny);
         smooth_density(rho2, Nx, Ny);
-        /* Re-enforce walls after smoothing (wrapping from periodic BCs is
-         * harmless for PBC mode; needed for W2/W4 to keep wall nodes at 0) */
         apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
 
         /* --- Step 6: log and optional snapshot --- */
@@ -525,7 +532,20 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         io_log_convergence(log_path, iter, err);
 
         if ((iter + 1) % save_ev == 0) {
-            printf("  iter %6d   err = %.6e\n", iter + 1, err);
+            /* Compute density statistics for diagnostics */
+            double min1 = rho1[0], max1 = rho1[0], sum1 = 0;
+            double min2 = rho2[0], max2 = rho2[0], sum2 = 0;
+            for (size_t k = 0; k < N; ++k) {
+                if (rho1[k] < min1) min1 = rho1[k];
+                if (rho1[k] > max1) max1 = rho1[k];
+                sum1 += rho1[k];
+                if (rho2[k] < min2) min2 = rho2[k];
+                if (rho2[k] > max2) max2 = rho2[k];
+                sum2 += rho2[k];
+            }
+            printf("  iter %6d   err=%.3e   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
+                   iter + 1, err, min1, sum1/(double)N, max1,
+                   min2, sum2/(double)N, max2);
             save_snapshot(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
         }
 

@@ -38,6 +38,7 @@ static int ensure_dir(const char *path) {
 }
 
 int main(int argc, char **argv) {
+    setbuf(stdout, NULL);  /* unbuffered output for real-time monitoring */
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <config_file>\n", argv[0]);
         return 1;
@@ -74,32 +75,15 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Initial condition: random density field with exact mass conservation.
-     *
-     * Each cell gets a uniform random value in (0, 1], then the whole field
-     * is rescaled so that its mean equals the target bulk density exactly:
-     *
-     *   r_i[k] = u_k * (rho_b_i * N / sum(u))
-     *
-     * This guarantees  sum(r_i) = rho_b_i * N  to floating-point precision
-     * regardless of the random seed, while keeping the spatial distribution
-     * fully random (no imposed stripe or other geometric bias).
+    /* Initial condition: random density placement.
+     * Each grid point gets a random density value in [0, 2*rho_bulk].
      */
     {
+        const int N = cfg.grid.nx * cfg.grid.ny;
         srand(42);
-        double sum1 = 0.0, sum2 = 0.0;
-        for (size_t k = 0; k < N; ++k) {
-            r1[k] = (double)rand() / ((double)RAND_MAX + 1.0) + 1e-6;
-            r2[k] = (double)rand() / ((double)RAND_MAX + 1.0) + 1e-6;
-            sum1 += r1[k];
-            sum2 += r2[k];
-        }
-        /* Rescale so mean == bulk density (exact mass conservation). */
-        double scale1 = cfg.rho1 * (double)N / sum1;
-        double scale2 = cfg.rho2 * (double)N / sum2;
-        for (size_t k = 0; k < N; ++k) {
-            r1[k] *= scale1;
-            r2[k] *= scale2;
+        for (int i = 0; i < N; ++i) {
+            r1[i] = cfg.rho1 * (2.0 * rand() / (double)(RAND_MAX + 1.0) + 1e-6);
+            r2[i] = cfg.rho2 * (2.0 * rand() / (double)(RAND_MAX + 1.0) + 1e-6);
         }
     }
 
