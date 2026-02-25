@@ -74,35 +74,32 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Initial condition: half-space stripe seed to bias towards the
-     * phase-separated structured solution (avoids trivial uniform fixed point).
+    /* Initial condition: random density field with exact mass conservation.
      *
-     * Half A (ix < Nx/2): high rho1, low  rho2
-     * Half B (ix >= Nx/2): low  rho1, high rho2
-     * Global averages are conserved: (rho_hi + rho_lo)/2 = rho_b.
-     * Small noise breaks y-symmetry so the stripe can tilt.
+     * Each cell gets a uniform random value in (0, 1], then the whole field
+     * is rescaled so that its mean equals the target bulk density exactly:
+     *
+     *   r_i[k] = u_k * (rho_b_i * N / sum(u))
+     *
+     * This guarantees  sum(r_i) = rho_b_i * N  to floating-point precision
+     * regardless of the random seed, while keeping the spatial distribution
+     * fully random (no imposed stripe or other geometric bias).
      */
     {
-        double rho1_hi = cfg.rho1 * 1.25;
-        double rho1_lo = cfg.rho1 * 0.75;
-        double rho2_hi = cfg.rho2 * 1.25;
-        double rho2_lo = cfg.rho2 * 0.75;
-        int Nx = cfg.grid.nx, Ny = cfg.grid.ny;
         srand(42);
-        for (int iy = 0; iy < Ny; ++iy) {
-            for (int ix = 0; ix < Nx; ++ix) {
-                double noise = 0.05 * (2.0 * rand()/(double)RAND_MAX - 1.0);
-                size_t k = (size_t)(iy * Nx + ix);
-                if (ix < Nx / 2) {
-                    r1[k] = rho1_hi * (1.0 + noise);
-                    r2[k] = rho2_lo * (1.0 + noise);
-                } else {
-                    r1[k] = rho1_lo * (1.0 + noise);
-                    r2[k] = rho2_hi * (1.0 + noise);
-                }
-                if (r1[k] < 1e-6) r1[k] = 1e-6;
-                if (r2[k] < 1e-6) r2[k] = 1e-6;
-            }
+        double sum1 = 0.0, sum2 = 0.0;
+        for (size_t k = 0; k < N; ++k) {
+            r1[k] = (double)rand() / ((double)RAND_MAX + 1.0) + 1e-6;
+            r2[k] = (double)rand() / ((double)RAND_MAX + 1.0) + 1e-6;
+            sum1 += r1[k];
+            sum2 += r2[k];
+        }
+        /* Rescale so mean == bulk density (exact mass conservation). */
+        double scale1 = cfg.rho1 * (double)N / sum1;
+        double scale2 = cfg.rho2 * (double)N / sum2;
+        for (size_t k = 0; k < N; ++k) {
+            r1[k] *= scale1;
+            r2[k] *= scale2;
         }
     }
 

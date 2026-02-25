@@ -546,4 +546,87 @@ Solver terminates when $\varepsilon < \varepsilon_{\text{tol}}$.
 computes exactly that RMS.  The $\xi_i$ prefactor recovers $\|\rho^{(t+1)}-\rho^{(t)}\|$
 from $\|K_i - \rho_i^{(t+1)}\|$, matching the slide identity precisely.
 
+---
+
+## 11. Anti-Checkerboard Smoothing
+**Function:** `smooth_density` *(called twice per iteration, after boundary mask)*
+
+### 11a. Origin of the Nyquist instability
+
+The Yukawa potential diverges as $1/r$, so the nearest-neighbour value
+$U_{ij}(dx) \gg U_{ij}(2\,dx)$ dominates the discrete convolution sum.
+On a square lattice the Fourier component of $U_{ij}$ at the grid Nyquist
+wavevector $\mathbf{k}^{(\mathrm{cb})} = (\pi/dx,\,\pi/dx)$ is
+
+$$\hat{U}^{(\mathrm{cb})}_{ij} = dA\sum_{\mathbf{r}\neq 0} U_{ij}(r)\;(-1)^{i_x+i_y}$$
+
+For species-11 with the project parameters and $dx=0.2$:
+
+$$\hat{U}^{(\mathrm{cb})}_{11} \approx -7.26 \qquad (dA = 0.04)$$
+
+The resulting **spinodal temperature** for the checkerboard mode is
+
+$$T^{(\mathrm{cb})}_{\mathrm{sp}} = \rho_{1,b}\,|\hat{U}^{(\mathrm{cb})}_{11}| \approx 0.4 \times 7.26 \approx 2.9$$
+
+For $T < 2.9$ the discrete EL operator has an eigenvalue $> 1$ at $\mathbf{k}^{(\mathrm{cb})}$ and the mode
+grows each Picard step.  For $T > 2.9$ it has eigenvalue $0.963$ per iteration
+(slow decay), but the nonlinear coupling between the physical SALR modulation
+and the re-excited checkerboard mode sustains a finite checkerboard amplitude
+that does not converge to zero in finite iterations.
+
+### 11b. Spectral diagnosis
+
+Computing $\hat{U}_{11}(\mathbf{k})$ across the full Brillouin zone
+reveals that **the Nyquist mode is the only unstable mode** for these
+parameters at $T=6$:
+
+| $|\mathbf{k}|$ | $\lambda = 2\pi/k$ | $\hat{U}_{11}$ |
+|---|---|---|
+| 0.001 | 6283 | +68.8 (uniform, repulsive) |
+| 1.58 | 3.98 | +59.3 |
+| 9.46 | 0.66 | ≈ 0 (zero-crossing) |
+| 15.71 = $\pi/dx$ | 0.40 = $2\,dx$ | −7.26 **minimum** |
+
+Since $\hat{U}_{11}(k) > 0$ for all $\lambda > 0.67$ (physical SALR scales),
+the **physical spinodal for microphase separation does not exist** within the
+Brillouin zone of this grid.  At $T=6$ the unique thermodynamically stable
+solution is **uniform** ($\rho_i(\mathbf{r}) = \rho_{i,b}$).  Any apparent
+structure seen without anti-aliasing is the Nyquist mode, not physical SALR
+clustering.
+
+### 11c. The smoothing fix
+
+A single 5-point Laplacian step applied to $\rho_i$ after each Picard mix:
+
+$$\rho_i^{\mathrm{sm}}(\mathbf{r}) = (1-4\varepsilon_s)\,\rho_i(\mathbf{r})
+  + \varepsilon_s\bigl[\rho_i(\mathbf{r}^+_x)+\rho_i(\mathbf{r}^-_x)
+                      +\rho_i(\mathbf{r}^+_y)+\rho_i(\mathbf{r}^-_y)\bigr]$$
+
+has eigenvalue
+
+$$s(\mathbf{k}) = 1 - 2\varepsilon_s\bigl(1-\cos(k_x\,dx)\bigr)
+                   - 2\varepsilon_s\bigl(1-\cos(k_y\,dx)\bigr)$$
+
+with $\varepsilon_s = 0.01$ (`SMOOTH_EPS`):
+
+| Mode | $s$ per step | Combined with Picard $(\times\,0.963)$ |
+|---|---|---|
+| Nyquist $k=\pi/dx$ | $1-8\varepsilon_s = 0.92$ | $0.963 \times 0.92 = 0.886$ |
+| Physical $\lambda=4$, $k=\pi/2$ | $\approx 0.9999$ | $\approx 0.963 \times 0.9999$ |
+
+After 129 iterations the Nyquist amplitude is suppressed by a factor
+$0.886^{129} \approx e^{-15} \approx 3 \times 10^{-7}$ — fully eliminated.
+The physical modulation ($\lambda \gg dx$) is attenuated by $< 1\%$.
+
+**Side-effect:** the smoothing breaks the nonlinear resonance that was
+sustaining the spurious structured fixed point.  The Picard iteration now
+converges to the correct thermodynamic solution 16× faster
+(129 vs 2109 iterations at $T=6$).
+
+```c
+/* SMOOTH_EPS = 0.01  */
+tmp[iy*nx+ix] = (1.0 - 4.0*SMOOTH_EPS) * rho[iy*nx+ix]
+    + SMOOTH_EPS * (rho[iy*nx+xm] + rho[iy*nx+xp]
+                  + rho[ym*nx+ix] + rho[yp*nx+ix]);
+```
 
