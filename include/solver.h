@@ -23,12 +23,19 @@ typedef struct {
 /* Forward declaration — full SimConfig defined in config.h */
 struct SimConfig;
 
-/* Run the DFT solver; returns 0 on convergence, -1 on failure.
-   rho[] is the density array (input: initial guess, output: result).
-   n = total number of grid points. */
-int solver_run(double *rho, size_t n, const void *config);
+/*
+ * solver_run_binary - Picard iteration for a 2-component SALR mixture.
+ *
+ * rho1 and rho2 are flat nx*ny arrays (input: initial guess,
+ * output: converged density profile, row-major: index = iy*nx + ix).
+ * Returns 0 on convergence, 1 if max_iterations was reached without
+ * convergence, -1 on allocation failure.
+ * Intermediate snapshots and the convergence log are written to
+ * cfg->output_dir according to cfg->save_every.
+ */
+int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg);
 
-/* Compute L2 norm of difference between two arrays */
+/* Compute L2 norm of (a - b) over n elements */
 double solver_l2_diff(const double *a, const double *b, size_t n);
 
 #endif /* SOLVER_H */

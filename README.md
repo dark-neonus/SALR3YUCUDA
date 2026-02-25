@@ -62,6 +62,23 @@ cmake --build build --parallel
 ./build/test_potential
 ```
 
+### Visualisation
+
+After a completed run, plot the density profiles and convergence curve:
+
+```bash
+python3 scripts/plot_density.py output/
+```
+
+Requires **gnuplot ≥ 5.0** on `PATH` (no Python packages beyond the standard library).
+Produces `output/density_species1_final.png`, `output/density_species2_final.png`,
+and `output/convergence.png`.  Each plot also saves a `.gp` script for manual re-use.
+
+> **Note on physics:** At `temperature = 12.0` (default) the system is in the
+> high-temperature disordered phase, so the converged density is nearly uniform.
+> Structured (cluster/lamellar) phases emerge at lower temperatures; lower `T`
+> and adjust the mixing coefficients `xi1`/`xi2` downward for better stability.
+
 > Full instructions: [docs/BUILD.md](docs/BUILD.md)
 
 ## Configuration
@@ -79,11 +96,16 @@ The simulation is controlled via `.cfg` files. Key sections:
 ## Roadmap
 
 - [x] Project structure and headers
-- [ ] Config file parser
-- [ ] Grid initialisation
-- [ ] SALR potential evaluation (CPU)
-- [ ] DFT solver — Picard iteration (CPU)
-- [ ] Validation tests
+- [x] Config file parser (all 3-Yukawa parameters)
+- [x] Grid initialisation (cell-centred, periodic)
+- [x] 3-Yukawa potential evaluation (CPU)
+- [x] DFT solver — Picard iteration (CPU, O(N²) convolution)
+- [x] Intermediate and final density output (ASCII, gnuplot-compatible)
+- [x] Convergence logging
+- [x] Python visualisation script (side-by-side colour maps + convergence curve)
+- [ ] Validation tests with known analytical limits
+- [ ] CUDA port of the convolution kernel
+- [ ] Performance benchmarking: CPU vs GPU
 - [ ] Output & plotting
 - [ ] CUDA port of solver kernels
 - [ ] CPU vs GPU benchmarking

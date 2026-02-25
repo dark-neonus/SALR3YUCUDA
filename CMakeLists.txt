@@ -33,6 +33,10 @@ add_executable(test_solver
     tests/test_solver.c
     src/cpu/solver_cpu.c
     src/cpu/math_utils_cpu.c
+    src/cpu/potential_cpu.c
+    src/core/config.c
+    src/core/grid.c
+    src/utils/io.c
 )
 target_link_libraries(test_solver m)
 

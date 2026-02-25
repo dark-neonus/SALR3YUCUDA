@@ -1,38 +1,48 @@
 /*
- * math_utils_cpu.c — Vector/matrix math operations (CPU, pure C)
+ * math_utils_cpu.c — Vector math operations (CPU, pure C)
  *
- * TODO: implement all math utility functions.
+ * All operations are element-wise over flat arrays of length n.
+ * Output arrays may alias input arrays only when the operation is safe
+ * (e.g. vec_scale(a, s, a, n) is fine; vec_add(a,b,a,n) is fine).
  */
 
 #include <math.h>
 #include <stddef.h>
 #include "../../include/math_utils.h"
 
+/* c[i] = a[i] + b[i] */
 void vec_add(const double *a, const double *b, double *c, size_t n) {
-    /* TODO: implement c[i] = a[i] + b[i] */
-    (void)a; (void)b; (void)c; (void)n;
+    for (size_t i = 0; i < n; ++i) { 
+        c[i] = a[i] + b[i];
+    }
 }
 
+/* c[i] = alpha * a[i] */
 void vec_scale(const double *a, double alpha, double *c, size_t n) {
-    /* TODO: implement c[i] = alpha * a[i] */
-    (void)a; (void)alpha; (void)c; (void)n;
+    for (size_t i = 0; i < n; ++i) {
+        c[i] = alpha * a[i];
+    }
 }
 
+/* Returns sum_i a[i]*b[i] */
 double vec_dot(const double *a, const double *b, size_t n) {
-    /* TODO: implement dot product */
-    (void)a; (void)b; (void)n;
-    return 0.0;
+    double s = 0.0;
+    for (size_t i = 0; i < n; ++i) { 
+        s += a[i] * b[i];
+    }
+    return s;
 }
 
+/* Returns sqrt( sum_i a[i]^2 ) */
 double vec_norm(const double *a, size_t n) {
-    /* TODO: implement Euclidean norm */
-    (void)a; (void)n;
-    return 0.0;
+    return sqrt(vec_dot(a, a, n));
 }
 
+/* c[i] = alpha*a[i] + beta*b[i] */
 void vec_add_scaled(const double *a, double alpha,
                     const double *b, double beta,
                     double *c, size_t n) {
-    /* TODO: implement c[i] = alpha*a[i] + beta*b[i] */
-    (void)a; (void)alpha; (void)b; (void)beta; (void)c; (void)n;
+    for (size_t i = 0; i < n; ++i) {
+        c[i] = alpha * a[i] + beta * b[i];
+    }
 }

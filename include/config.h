@@ -12,11 +12,19 @@
 #include "potential.h"
 #include "solver.h"
 
+/* ── Boundary condition modes ────────────────────────────────────────────── */
+typedef enum {
+    BC_PBC,  /* periodic in both x and y                                   */
+    BC_W2,   /* hard walls at x=0 and x=Lx; periodic in y                  */
+    BC_W4    /* hard walls on all four sides                                */
+} BoundaryMode;
+
 /* ── Master configuration structure ─────────────────────────────────────── */
-typedef struct {
+typedef struct SimConfig {
     GridParams      grid;
     PotentialParams potential;
     SolverParams    solver;
+    BoundaryMode    boundary_mode;   /* spatial boundary condition type     */
     double          temperature;     /* environment temperature T            */
     double          rho1;            /* average density of species 1         */
     double          rho2;            /* average density of species 2         */

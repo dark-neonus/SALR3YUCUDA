@@ -76,6 +76,11 @@ int config_load(const char *filename, SimConfig *config) {
             else if (strcmp(key, "Ly") == 0) config->grid.Ly = atof(val);
             else if (strcmp(key, "dx") == 0) config->grid.dx = atof(val);
             else if (strcmp(key, "dy") == 0) config->grid.dy = atof(val);
+            else if (strcmp(key, "boundary_mode") == 0) {
+                if      (strcmp(val, "W2") == 0) config->boundary_mode = BC_W2;
+                else if (strcmp(val, "W4") == 0) config->boundary_mode = BC_W4;
+                else                             config->boundary_mode = BC_PBC;
+            }
         }
         /* ── [physics] ────────────────────────────────────────────────── */
         else if (strcmp(section, "physics") == 0) {
@@ -129,6 +134,8 @@ void config_print(const SimConfig *config) {
            config->grid.nx, config->grid.ny,
            config->grid.Lx, config->grid.Ly,
            config->grid.dx, config->grid.dy);
+    const char *bc_names[] = {"PBC", "W2", "W4"};
+    printf("  boundary_mode=%s\n", bc_names[config->boundary_mode]);
     printf("[physics]\n");
     printf("  temperature=%.6g  rho1=%.6g  rho2=%.6g  cutoff_radius=%.6g\n",
            config->temperature, config->rho1, config->rho2,
