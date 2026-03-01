@@ -41,8 +41,8 @@
 if (!exists("output_dir")) { output_dir = "output" }
 
 # ── Collect file lists ─────────────────────────────────────────────────────
-_iter1 = system("ls -v ".output_dir."/density_species1_iter_*.dat 2>/dev/null")
-_iter2 = system("ls -v ".output_dir."/density_species2_iter_*.dat 2>/dev/null")
+_iter1 = system("ls -v ".output_dir."/data/density_species1_iter_*.dat 2>/dev/null")
+_iter2 = system("ls -v ".output_dir."/data/density_species2_iter_*.dat 2>/dev/null")
 _fin1  = system("test -f ".output_dir."/density_species1_final.dat && echo ".output_dir."/density_species1_final.dat || true")
 _fin2  = system("test -f ".output_dir."/density_species2_final.dat && echo ".output_dir."/density_species2_final.dat || true")
 
@@ -51,7 +51,7 @@ files2 = system("echo '".(_iter2).(_fin2 eq "" ? "" : " "._fin2)."' | xargs")
 
 N = words(files1)
 if (N == 0) {
-    print "ERROR: no density files found in '".output_dir."/'."
+    print "ERROR: no density files found in '".output_dir."/' or '".output_dir."/data/'."
     print "Run the simulation first, then relaunch this browser."
     exit
 }
@@ -120,14 +120,14 @@ DRAW = \
 . "set xlabel 'x'; set ylabel 'y'; set zlabel '{/Symbol r}' rotate; set ticslevel 0; set view 60,30;" \
 . "set title '{/Symbol r}_1   scatter' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb1_clip] } else { set cbrange [*:*] };" \
-. "splot f1 u 1:2:3:3 w p pt 7 ps 0.45 lc palette notitle;" \
+. "splot f1 u 1:2:(\$3 > rho1_mean*1.2 ? \$3 : 1/0):3 w p pt 7 ps 0.4 lc palette notitle;" \
 . "set title '{/Symbol r}_2   scatter' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb2_clip] } else { set cbrange [*:*] };" \
-. "splot f2 u 1:2:3:3 w p pt 7 ps 0.45 lc palette notitle;" \
-. "set title '{/Symbol r}_1+{/Symbol r}_2   scatter' font ',11';" \
+. "splot f2 u 1:2:(\$3 > rho2_mean*1.2 ? \$3 : 1/0):3 w p pt 7 ps 0.7 lc palette notitle;" \
+. "set title '{/Symbol r}_1+{/Symbol r}_2   scatter' font ',11'; set key top right font ',8';" \
 . "if (clip_mode) { set cbrange [0:cb_mix_clip] } else { set cbrange [*:*] };" \
-. "splot fmix u 1:2:(\$3+\$6):(\$3+\$6) w p pt 7 ps 0.45 lc palette notitle;" \
-. "unset zlabel; unset view; set xlabel 'x'; set ylabel 'y'; set pm3d map;" \
+. "splot f1 u 1:2:(\$3 > rho1_mean*1.2 ? \$3 : 1/0) w p pt 7 ps 0.7 lc rgb '#8B008B' title 'SALR', f2 u 1:2:(\$3 > rho2_mean*1.2 ? \$3 : 1/0) w p pt 7 ps 0.4 lc rgb '#2E8B57' title 'Solvent';" \
+. "unset key; unset zlabel; unset view; set xlabel 'x'; set ylabel 'y'; set pm3d map;" \
 . "set title '{/Symbol r}_1   heatmap' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb1_clip] } else { set cbrange [*:*] };" \
 . "splot f1 u 1:2:3 notitle;" \

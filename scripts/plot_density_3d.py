@@ -67,8 +67,9 @@ def _detect_terminal() -> str:
 
 def _find_final_pair(output_dir: str):
     """Return (path1, path2) for the final density files in output_dir."""
-    p1 = os.path.join(output_dir, "density_species1_final.dat")
-    p2 = os.path.join(output_dir, "density_species2_final.dat")
+    data_dir = os.path.join(output_dir, "data")
+    p1 = os.path.join(data_dir, "density_species1_final.dat")
+    p2 = os.path.join(data_dir, "density_species2_final.dat")
     missing = [p for p in (p1, p2) if not os.path.exists(p)]
     if missing:
         sys.exit(f"Error: file(s) not found:\n  " + "\n  ".join(missing))

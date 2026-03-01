@@ -3,11 +3,15 @@
 # run.sh — Build and run all targets for SALR3YUCUDA
 #
 # Usage:
-#   ./run.sh              # build + run main simulation + run tests
+#   ./run.sh              # build + run main simulation (default)
 #   ./run.sh build        # build only
-#   ./run.sh sim          # build + run main simulation only
+#   ./run.sh sim          # build + run main simulation
 #   ./run.sh tests        # build + run test targets only
+#   ./run.sh all          # build + run simulation + run tests
 #   ./run.sh clean        # remove build directory
+#
+# Multithreading:
+#   Uses OMP_NUM_THREADS (default: all cores) for OpenMP parallelization
 # =============================================================================
 
 set -euo pipefail
@@ -37,11 +41,26 @@ do_sim() {
     # with the new one.  Preserve the output directory itself.
     local out_dir
     out_dir="$PROJECT_ROOT/output"
-    if compgen -G "$out_dir/density_species*.dat" > /dev/null 2>&1 || \
-       [[ -f "$out_dir/convergence.dat" ]]; then
-        _cyan "    clearing previous output in $out_dir/ ..."
-        rm -f "$out_dir"/density_species*.dat "$out_dir"/convergence.dat
+    local data_dir="$out_dir/data"
+    
+    # Create data subdirectory if it doesn't exist
+    mkdir -p "$data_dir"
+    
+    if compgen -G "$data_dir/density_species*.dat" > /dev/null 2>&1 || \
+       [[ -f "$out_dir/convergence.dat" ]] || \
+       [[ -f "$out_dir/density_species1_final.dat" ]]; then
+        _cyan "    clearing previous output in $data_dir/ and $out_dir/ ..."
+        rm -f "$data_dir"/density_species*.dat \
+              "$out_dir"/convergence.dat \
+              "$out_dir"/density_species*_final.dat
     fi
+    
+    # Set OpenMP threads for multithreading (use all available cores)
+    local num_threads
+    num_threads="${OMP_NUM_THREADS:-$(nproc)}"
+    export OMP_NUM_THREADS="$num_threads"
+    _cyan "    using $num_threads OpenMP threads"
+    
     "$BUILD_DIR/salr_dft" "$CONFIG"
     _green "Simulation finished."
 }
@@ -81,7 +100,7 @@ do_clean() {
 }
 
 # ── dispatch ──────────────────────────────────────────────────────────────────
-MODE="${1:-all}"
+MODE="${1:-sim}"
 
 case "$MODE" in
     build)  do_build ;;
@@ -91,7 +110,7 @@ case "$MODE" in
     all)    do_build; do_sim; do_tests ;;
     *)
         _red "Unknown mode: $MODE"
-        echo "Usage: $0 [all|build|sim|tests|clean]"
+        echo "Usage: $0 [sim|build|tests|all|clean]"
         exit 1
         ;;
 esac

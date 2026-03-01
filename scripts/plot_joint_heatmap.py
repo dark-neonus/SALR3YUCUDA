@@ -144,20 +144,23 @@ def plot_joint_heatmap(path1: str, path2: str, output_path: str):
 
 def plot_directory(output_dir: str):
     """Plot final density files from a directory."""
-    path1 = os.path.join(output_dir, "density_species1_final.dat")
-    path2 = os.path.join(output_dir, "density_species2_final.dat")
+    data_dir = os.path.join(output_dir, "data")
+    
+    # Check for final files in data/ subdirectory
+    path1 = os.path.join(data_dir, "density_species1_final.dat")
+    path2 = os.path.join(data_dir, "density_species2_final.dat")
     
     if os.path.exists(path1) and os.path.exists(path2):
         out_path = os.path.join(output_dir, "joint_heatmap_final.png")
         plot_joint_heatmap(path1, path2, out_path)
     else:
-        print(f"Final density files not found in {output_dir}")
+        print(f"Final density files not found in {data_dir}")
         return
     
     # Also plot intermediate snapshots if available
     import glob
-    iter_files1 = sorted(glob.glob(os.path.join(output_dir, "density_species1_iter_*.dat")))
-    iter_files2 = sorted(glob.glob(os.path.join(output_dir, "density_species2_iter_*.dat")))
+    iter_files1 = sorted(glob.glob(os.path.join(data_dir, "density_species1_iter_*.dat")))
+    iter_files2 = sorted(glob.glob(os.path.join(data_dir, "density_species2_iter_*.dat")))
     
     if iter_files1 and iter_files2:
         # Plot last iteration

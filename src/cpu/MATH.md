@@ -630,3 +630,121 @@ tmp[iy*nx+ix] = (1.0 - 4.0*SMOOTH_EPS) * rho[iy*nx+ix]
                   + rho[ym*nx+ix] + rho[yp*nx+ix]);
 ```
 
+---
+
+## 12. Temperature and Pattern Formation
+
+### 12a. The dimensionless control parameter
+
+The key quantity determining whether patterns (clusters, stripes) form is the
+**dimensionless interaction strength**:
+
+$$\Gamma \;=\; \frac{\beta \cdot |A|}{1} \;=\; \frac{|A|}{T}$$
+
+where $A$ is the dominant amplitude (e.g., $A_{11,1}$) and $T$ is temperature.
+
+- **High $\Gamma$ (low T or large $|A|$):** Strong interactions overcome thermal
+  fluctuations → microphase separation (clusters, stripes, lamellae)
+- **Low $\Gamma$ (high T or small $|A|$):** Thermal fluctuations dominate →
+  uniform density (no patterns)
+
+### 12b. Why T=12 gives uniform density with original parameters
+
+With the reference parameters from the slide table:
+- $A_{11,1} = 150.66$, $T = 12$
+- $\Gamma_{11} = 150.66 / 12 \approx 12.5$
+
+This value of $\Gamma$ is **below the spinodal threshold** for the implemented
+SALR potential. The system is thermodynamically stable in the uniform phase.
+
+**Verification:**
+```
+T=12: err converges → 9.8e-09, rho1 = [0.4000, 0.4000, 0.4000] (uniform)
+```
+
+### 12c. How to obtain patterns at T=12
+
+To form patterns at $T=12$ while keeping relative interaction ratios fixed,
+scale all amplitudes by a factor $S$:
+
+$$A'_{ij,m} = S \cdot A_{ij,m}$$
+
+This increases $\Gamma$ by the same factor:
+
+$$\Gamma' = S \cdot \Gamma$$
+
+**Example with $S = 100$:**
+- $A'_{11,1} = 15066$, $T = 12$
+- $\Gamma'_{11} = 15066 / 12 \approx 1256$
+
+At this $\Gamma$, the system is deep in the two-phase region and shows strong
+density modulations (clusters/stripes with $\rho_{\max}/\rho_{\text{mean}} \approx 250$).
+
+### 12d. SALR phase diagram (qualitative)
+
+| $\Gamma = |A|/T$ | $\bar{\rho}$ (low) | $\bar{\rho}$ (medium) | $\bar{\rho}$ (high) |
+|---|---|---|---|
+| $< \Gamma_c$ (small) | Uniform | Uniform | Uniform |
+| $\Gamma_c < \Gamma < \Gamma_s$ | Dilute + clusters | Clusters | Dense + voids |
+| $> \Gamma_s$ (large) | Stripes/lamellae | Stripes | Inverse stripes |
+
+where:
+- $\Gamma_c \approx 50$–100 is the cluster threshold (depends on $\alpha$ ratios)
+- $\Gamma_s \approx 500$–1000 is the stripe threshold
+
+### 12e. Summary: achieving slide-like patterns
+
+The diagonal stripes shown in the slides require either:
+
+1. **Lower temperature** with original amplitudes:
+   - $T \lesssim 1$ with $A_{11,1} = 150.66$ → $\Gamma \gtrsim 150$
+
+2. **Scaled amplitudes** at $T=12$:
+   - $S \gtrsim 50$ → $\Gamma \gtrsim 600$ for stripe formation
+
+3. **Initial conditions**: Stripe patterns emerge more readily from:
+   - 1D sinusoidal seed: $\rho(x) = \bar{\rho}(1 + \epsilon\sin(k_s x))$
+   - With $k_s = 2\pi/\lambda_s$ where $\lambda_s$ is the expected stripe wavelength
+
+**Config for stripes at T=12:**
+```ini
+[physics]
+temperature = 12.0
+rho1 = 0.6
+
+[interaction]
+# Scale all A values by 100
+A_11_1 = 15065.61  # was 150.66
+A_11_2 = -12261.30 # was -122.61
+...
+```
+
+---
+
+## 13. Boundary Conditions and Pattern Morphology
+
+### 13a. PBC (Periodic Boundary Conditions)
+
+Both axes use minimum-image convention:
+
+$$\Delta r_x = \min(|x_i - x_j|, L_x - |x_i - x_j|)$$
+
+Patterns can orient in any direction. With random initial conditions,
+diagonal stripes often emerge due to symmetry breaking.
+
+### 13b. W2 (Walls at x=0 and x=Lx)
+
+- **X-axis:** Actual distance $\Delta r_x = |x_i - x_j|$ (no wrapping)
+- **Y-axis:** Periodic (minimum-image)
+- **Boundary condition:** $\rho(x=0) = \rho(x=L_x) = 0$
+
+Patterns align perpendicular to walls. Stripes form parallel to walls
+(running in y-direction) because this minimizes wall interaction energy.
+
+### 13c. W4 (Walls on all sides)
+
+- **Both axes:** Actual distance (no wrapping)
+- **Boundary condition:** $\rho = 0$ on all boundaries
+
+Patterns are confined to the interior. With high $\Gamma$, a dense phase
+forms in the center surrounded by a depleted boundary layer.

@@ -96,11 +96,12 @@ splot '{dat_path}' using 1:2:3 with pm3d notitle
 
 def plot_binary_final(output_dir: str):
     """Plot species 1 and species 2 final densities as two separate PNGs."""
-    path1 = os.path.join(output_dir, "density_species1_final.dat")
-    path2 = os.path.join(output_dir, "density_species2_final.dat")
+    data_dir = os.path.join(output_dir, "data")
+    path1 = os.path.join(data_dir, "density_species1_final.dat")
+    path2 = os.path.join(data_dir, "density_species2_final.dat")
 
     if not os.path.exists(path1) or not os.path.exists(path2):
-        print(f"Final density files not found in '{output_dir}'.")
+        print(f"Final density files not found in '{data_dir}'.")
         return
 
     cbmin, cbmax = dat_rho_range(path1, path2)

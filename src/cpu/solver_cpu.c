@@ -1,9 +1,6 @@
 /*
  * solver_cpu.c — Iterative DFT solver for a 2-component SALR mixture (CPU)
  *
- * Variable naming matches the slide notation directly so every block of code
- * can be traced back to a specific formula on the slides.
- *
  * ── Pair potential (slide "Triple Yukawa pair potential") ────────────────
  *
  *   U_ij(r) = sum_{m=1}^{3}  A_ij^(m) * exp(-alpha_ij^(m) * r) / r
@@ -53,6 +50,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 #include <stdio.h>
+#include <omp.h>
 
 #include "../../include/solver.h"
 #include "../../include/config.h"
@@ -82,11 +80,12 @@ static void build_potential_table(double *table, int si, int sj,
                                   const PotentialParams *p,
                                   int nx, int ny, double dx, double dy,
                                   int wall_x, int wall_y) {
+    #pragma omp parallel for collapse(2)
     for (int diy = 0; diy < ny; ++diy) {
-        /* Slide "Two-dimensional case": minimum-image or actual displacement */
-        double dry = wall_y ? diy * dy
-                            : ((diy <= ny / 2) ? diy * dy : (diy - ny) * dy);
         for (int dix = 0; dix < nx; ++dix) {
+            /* Slide "Two-dimensional case": minimum-image or actual displacement */
+            double dry = wall_y ? diy * dy
+                                : ((diy <= ny / 2) ? diy * dy : (diy - ny) * dy);
             double drx = wall_x ? dix * dx
                                 : ((dix <= nx / 2) ? dix * dx : (dix - nx) * dx);
             double r   = sqrt(drx * drx + dry * dry);  /* |r_ij - r_mn| */
@@ -95,36 +94,44 @@ static void build_potential_table(double *table, int si, int sj,
     }
 }
 
+/* ── Analytical bulk field calculation (slide "Two-dimensional case") ───────
+ *
+ * Φ_11,b = 2π·ρ_1,b · Σ_{m=1}^{3} (A_11^(m) / α_11^(m)) · (1 - exp(-α_11^(m)·r_c))
+ * Φ_12,b = 2π·ρ_2,b · Σ_{m=1}^{3} (A_12^(m) / α_12^(m)) · (1 - exp(-α_12^(m)·r_c))
+ * Φ_21,b = 2π·ρ_1,b · Σ_{m=1}^{3} (A_12^(m) / α_12^(m)) · (1 - exp(-α_12^(m)·r_c))
+ * Φ_22,b = 2π·ρ_2,b · Σ_{m=1}^{3} (A_22^(m) / α_22^(m)) · (1 - exp(-α_22^(m)·r_c))
+ */
+static double compute_Phi_bulk_analytical(double rho_b, int si, int sj,
+                                          const PotentialParams *p) {
+    double sum = 0.0;
+    for (int m = 0; m < YUKAWA_TERMS; ++m) {
+        double A     = p->A[si][sj][m];
+        double alpha = p->alpha[si][sj][m];
+        if (alpha > 1e-12) {  /* Avoid division by zero */
+            sum += (A / alpha) * (1.0 - exp(-alpha * p->cutoff_radius));
+        }
+    }
+    return 2.0 * M_PI * rho_b * sum;
+}
+
 /* ── 2-D discrete convolution → Phi_ij fields ───────────────────────────── */
 
 /*
  * compute_Phi - Compute all four Phi_ij fields for one Picard iteration.
  *
- * Slide "Two-dimensional case" (Phi_ij definitions):
+ * Boundary handling from slides "Spatial density distributions":
+ *   PBC: periodic in both x and y - use minimum image (modular) in both axes
+ *   W2:  walls at x=0, x=Lx - actual distance in x, periodic (modular) in y
+ *   W4:  walls on all sides - actual distance in both x and y
  *
- *   Phi11(xi,yj) = dA * sum_{r'} rho1(r') * U11(|r_ij - r'|)
- *   Phi12(xi,yj) = dA * sum_{r'} rho2(r') * U12(|r_ij - r'|)
- *   Phi21(xi,yj) = dA * sum_{r'} rho1(r') * U12(|r_ij - r'|)
- *   Phi22(xi,yj) = dA * sum_{r'} rho2(r') * U22(|r_ij - r'|)
- *
- * All four fields are accumulated in a single pass over source cells (r') to
- * minimise memory traffic.  The inner x-loop is split into two contiguous
- * ranges to eliminate the modulo operation in the hot path:
- *
- *   For source column jx:
- *     ix in [jx, nx-1]  =>  tab_offset k = ix - jx        (k = 0 .. nx-1-jx)
- *     ix in [0,  jx-1]  =>  tab_offset k = nx - jx + ix   (k = nx-jx .. nx-1)
- *
- * dA is applied once to all four arrays after the full O(N^2) sum.
- * Only 3 tables are needed because U12 is shared by Phi12 and Phi21
- * (U_{12} == U_{21} by symmetry of the pair potential).
+ * For walled axes, sum only over interior points (no wrap-around).
  */
 static void compute_Phi(
     double       *Phi11,  double       *Phi12,
     double       *Phi21,  double       *Phi22,
     const double *rho1,   const double *rho2,
     const double *U11,    const double *U12,   const double *U22,
-    int nx, int ny, double dA)
+    int nx, int ny, double dA, int wall_x, int wall_y)
 {
     size_t Ntot = (size_t)(nx * ny);
     memset(Phi11, 0, Ntot * sizeof(double));
@@ -132,46 +139,57 @@ static void compute_Phi(
     memset(Phi21, 0, Ntot * sizeof(double));
     memset(Phi22, 0, Ntot * sizeof(double));
 
-    for (int jy = 0; jy < ny; ++jy) {
-        for (int jx = 0; jx < nx; ++jx) {
-            /* Source densities at r' = (jx, jy) */
-            double s1 = rho1[jy * nx + jx];  /* rho1(r') */
-            double s2 = rho2[jy * nx + jx];  /* rho2(r') */
-
-            for (int iy = 0; iy < ny; ++iy) {
-                int diy = (iy - jy + ny) % ny;
+    #pragma omp parallel for collapse(2) schedule(dynamic, 4)
+    for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+            double p11 = 0.0, p12 = 0.0, p21 = 0.0, p22 = 0.0;
+            
+            for (int jy = 0; jy < ny; ++jy) {
+                /* Y displacement: periodic (minimum image) or actual distance */
+                int diy;
+                if (wall_y) {
+                    diy = (iy >= jy) ? (iy - jy) : (jy - iy);  /* |iy - jy| */
+                } else {
+                    diy = (iy - jy + ny) % ny;  /* minimum image */
+                    if (diy > ny / 2) diy = ny - diy;
+                }
+                if (diy >= ny) continue;  /* out of range */
+                
                 const double *tU11 = U11 + (size_t)diy * nx;
                 const double *tU12 = U12 + (size_t)diy * nx;
                 const double *tU22 = U22 + (size_t)diy * nx;
-                double *p11 = Phi11 + (size_t)iy * nx;
-                double *p12 = Phi12 + (size_t)iy * nx;
-                double *p21 = Phi21 + (size_t)iy * nx;
-                double *p22 = Phi22 + (size_t)iy * nx;
-
-                /* ix in [jx, nx-1]: table index k = 0 .. nx-1-jx */
-                int len1 = nx - jx;
-                for (int k = 0; k < len1; ++k) {
-                    p11[jx + k] += s1 * tU11[k];  /* Phi11 += rho1*U11 */
-                    p12[jx + k] += s2 * tU12[k];  /* Phi12 += rho2*U12 */
-                    p21[jx + k] += s1 * tU12[k];  /* Phi21 += rho1*U12 */
-                    p22[jx + k] += s2 * tU22[k];  /* Phi22 += rho2*U22 */
-                }
-                /* ix in [0, jx-1]: table index k = nx-jx .. nx-1 */
-                int off = nx - jx;
-                for (int k = 0; k < jx; ++k) {
-                    p11[k] += s1 * tU11[off + k];
-                    p12[k] += s2 * tU12[off + k];
-                    p21[k] += s1 * tU12[off + k];
-                    p22[k] += s2 * tU22[off + k];
+                
+                for (int jx = 0; jx < nx; ++jx) {
+                    /* X displacement: periodic (minimum image) or actual distance */
+                    int dix;
+                    if (wall_x) {
+                        dix = (ix >= jx) ? (ix - jx) : (jx - ix);  /* |ix - jx| */
+                    } else {
+                        dix = (ix - jx + nx) % nx;  /* minimum image */
+                        if (dix > nx / 2) dix = nx - dix;
+                    }
+                    if (dix >= nx) continue;  /* out of range */
+                    
+                    double s1 = rho1[jy * nx + jx];  /* rho1(r') */
+                    double s2 = rho2[jy * nx + jx];  /* rho2(r') */
+                    
+                    double u11 = tU11[dix];
+                    double u12 = tU12[dix];
+                    double u22 = tU22[dix];
+                    
+                    p11 += s1 * u11;
+                    p12 += s2 * u12;
+                    p21 += s1 * u12;
+                    p22 += s2 * u22;
                 }
             }
+            
+            size_t idx = (size_t)iy * nx + ix;
+            Phi11[idx] = p11 * dA;
+            Phi12[idx] = p12 * dA;
+            Phi21[idx] = p21 * dA;
+            Phi22[idx] = p22 * dA;
         }
-    }
-
-    /* Apply dA once — equivalent to the dA prefactor in the slide integral */
-    for (size_t k = 0; k < Ntot; ++k) {
-        Phi11[k] *= dA;  Phi12[k] *= dA;
-        Phi21[k] *= dA;  Phi22[k] *= dA;
     }
 }
 
@@ -196,6 +214,7 @@ static void compute_K(const double *Phi_a,  const double *Phi_b,
                       double Phi_ab,        double Phi_bb,
                       double rho0b,         double beta,
                       double *K,            size_t N) {
+    #pragma omp parallel for
     for (size_t k = 0; k < N; ++k) {
         double arg = -beta * (Phi_a[k] + Phi_b[k] - Phi_ab - Phi_bb);
         /* Clamp the exponent to prevent floating-point overflow/underflow.
@@ -264,23 +283,58 @@ static void apply_boundary_mask(double *rho1, double *rho2,
  * At physical SALR wavelength λ ≈ 4 (k = 2π/4):  s ≈ 0.999997
  * → The smoothing eliminates checkerboard with negligible effect on physics.
  *
- * For non-PBC modes only the interior is smoothed; wall nodes are re-zeroed
- * by apply_boundary_mask immediately after this call.
+ * Boundary handling:
+ *   PBC: periodic wrapping in both x and y
+ *   W2:  no wrap in x (use clamped neighbor or skip wall), periodic in y
+ *   W4:  no wrap in either axis (clamped neighbors)
  */
 #define SMOOTH_EPS 0.01   /* Laplacian smoothing strength; keep well below 0.125 */
 
-static void smooth_density(double *rho, int nx, int ny)
+static void smooth_density(double *rho, int nx, int ny, int mode)
 {
     /* Use a second buffer to avoid in-place aliasing */
     double *tmp = malloc((size_t)(nx * ny) * sizeof(double));
     if (!tmp) return;   /* silently skip if allocation fails */
 
-    for (int iy = 0; iy < ny; ++iy) {
-        int ym = (iy - 1 + ny) % ny;
-        int yp = (iy + 1)      % ny;
-        for (int ix = 0; ix < nx; ++ix) {
-            int xm = (ix - 1 + nx) % nx;
-            int xp = (ix + 1)      % nx;
+    int wall_x = (mode == BC_W2 || mode == BC_W4);
+    int wall_y = (mode == BC_W4);
+    
+    /* For wall modes, only smooth interior; wall cells stay at zero */
+    int x_start = wall_x ? 1 : 0;
+    int x_end   = wall_x ? nx - 1 : nx;
+    int y_start = wall_y ? 1 : 0;
+    int y_end   = wall_y ? ny - 1 : ny;
+
+    /* First copy current values (wall cells will stay unchanged) */
+    memcpy(tmp, rho, (size_t)(nx * ny) * sizeof(double));
+
+    #pragma omp parallel for collapse(2)
+    for (int iy = y_start; iy < y_end; ++iy) {
+        for (int ix = x_start; ix < x_end; ++ix) {
+            int ym, yp, xm, xp;
+            
+            /* Y neighbors */
+            if (wall_y) {
+                /* Clamped: use current cell value if at boundary */
+                ym = (iy > 0) ? iy - 1 : iy;
+                yp = (iy < ny - 1) ? iy + 1 : iy;
+            } else {
+                /* Periodic */
+                ym = (iy - 1 + ny) % ny;
+                yp = (iy + 1) % ny;
+            }
+            
+            /* X neighbors */
+            if (wall_x) {
+                /* Clamped: use current cell value if at boundary */
+                xm = (ix > 0) ? ix - 1 : ix;
+                xp = (ix < nx - 1) ? ix + 1 : ix;
+            } else {
+                /* Periodic */
+                xm = (ix - 1 + nx) % nx;
+                xp = (ix + 1) % nx;
+            }
+            
             tmp[iy*nx + ix] =
                 (1.0 - 4.0*SMOOTH_EPS) * rho[iy*nx + ix]
                 + SMOOTH_EPS * (rho[iy*nx + xm] + rho[iy*nx + xp]
@@ -295,6 +349,7 @@ static void smooth_density(double *rho, int nx, int ny)
 
 double solver_l2_diff(const double *a, const double *b, size_t n) {
     double sum = 0.0;
+    #pragma omp parallel for reduction(+:sum)
     for (size_t i = 0; i < n; ++i) {
         double d = a[i] - b[i];
         sum += d * d;
@@ -302,11 +357,43 @@ double solver_l2_diff(const double *a, const double *b, size_t n) {
     return sqrt(sum / (double)n);   /* normalised to be grid-size independent */
 }
 
+/*
+ * solver_l2_diff_interior - L2 difference only over interior cells (excluding walls).
+ * For W2: exclude ix=0 and ix=Nx-1 (wall columns)
+ * For W4: also exclude iy=0 and iy=Ny-1 (wall rows)
+ * For PBC: all cells are interior
+ *
+ * This prevents wall cells (where K≠0 but ρ=0 by constraint) from contributing
+ * to the convergence error, which would otherwise create a permanent error floor.
+ */
+static double solver_l2_diff_interior(const double *a, const double *b,
+                                       int nx, int ny, int mode) {
+    int x_start = (mode == BC_W2 || mode == BC_W4) ? 1 : 0;
+    int x_end   = (mode == BC_W2 || mode == BC_W4) ? nx - 1 : nx;
+    int y_start = (mode == BC_W4) ? 1 : 0;
+    int y_end   = (mode == BC_W4) ? ny - 1 : ny;
+    
+    double sum = 0.0;
+    size_t count = 0;
+    
+    #pragma omp parallel for collapse(2) reduction(+:sum, count)
+    for (int iy = y_start; iy < y_end; ++iy) {
+        for (int ix = x_start; ix < x_end; ++ix) {
+            size_t k = (size_t)iy * nx + ix;
+            double d = a[k] - b[k];
+            sum += d * d;
+            count++;
+        }
+    }
+    
+    return (count > 0) ? sqrt(sum / (double)count) : 0.0;
+}
+
 /* ── Output helpers ──────────────────────────────────────────────────────── */
 
 /*
  * save_snapshot - Write both density profiles for a given iteration to disk.
- * Filenames: <output_dir>/density_species{1,2}_iter_<NNNNNN>.dat
+ * Filenames: <output_dir>/data/density_species{1,2}_iter_<NNNNNN>.dat
  */
 static void save_snapshot(const double *rho1, const double *rho2,
                            const double *xs,   const double *ys,
@@ -314,11 +401,29 @@ static void save_snapshot(const double *rho1, const double *rho2,
                            const char *output_dir) {
     char path[512];
     snprintf(path, sizeof(path),
-             "%s/density_species1_iter_%06d.dat", output_dir, iter);
+             "%s/data/density_species1_iter_%06d.dat", output_dir, iter);
     io_save_density_2d(path, xs, ys, rho1, (size_t)nx, (size_t)ny);
 
     snprintf(path, sizeof(path),
-             "%s/density_species2_iter_%06d.dat", output_dir, iter);
+             "%s/data/density_species2_iter_%06d.dat", output_dir, iter);
+    io_save_density_2d(path, xs, ys, rho2, (size_t)nx, (size_t)ny);
+}
+
+/*
+ * save_final - Write final converged density profiles.
+ * Filenames: <output_dir>/data/density_species{1,2}_final.dat
+ */
+static void save_final(const double *rho1, const double *rho2,
+                        const double *xs,   const double *ys,
+                        int nx, int ny,
+                        const char *output_dir) {
+    char path[512];
+    snprintf(path, sizeof(path),
+             "%s/data/density_species1_final.dat", output_dir);
+    io_save_density_2d(path, xs, ys, rho1, (size_t)nx, (size_t)ny);
+
+    snprintf(path, sizeof(path),
+             "%s/data/density_species2_final.dat", output_dir);
     io_save_density_2d(path, xs, ys, rho2, (size_t)nx, (size_t)ny);
 }
 
@@ -391,28 +496,25 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
     build_potential_table(U22, 1, 1, &cfg->potential, Nx, Ny, dx, dy, wall_x, wall_y);
 
     /*
-     * Bulk interaction fields — slide "Euler-Lagrange equations" (Phi_ij,b):
+     * Bulk interaction fields — must be CONSISTENT with how Φ_ij(r) is computed.
+     * Since Φ(r) uses discrete summation over the potential table, Φ_b must also
+     * use numerical summation for the same discretization:
      *
-     *   Phi11b = dA * rho1_b * sum_{r'} U11(r')
-     *   Phi12b = dA * rho2_b * sum_{r'} U12(r')
-     *   Phi21b = dA * rho1_b * sum_{r'} U12(r')   (same sum_U12, diff. rho_b)
-     *   Phi22b = dA * rho2_b * sum_{r'} U22(r')
-     *
-     * These scalars fix the chemical potential so rho_i → rho_{i,b} in bulk.
-     * cfg->rho1 = rho_{1,b},  cfg->rho2 = rho_{2,b}.
-     *
-     * IMPORTANT: Φ(r) and Φ_b must use CONSISTENT methods.
-     * Since Φ(r) is computed numerically on the grid, Φ_b must also be numerical
-     * (sum over the potential table) for consistency.
+     *   Φ_11,b = dA · ρ_1,b · Σ_r U_11(r)
+     *   Φ_12,b = dA · ρ_2,b · Σ_r U_12(r)
+     *   Φ_21,b = dA · ρ_1,b · Σ_r U_12(r)
+     *   Φ_22,b = dA · ρ_2,b · Σ_r U_22(r)
      */
+    const double rho1_b = cfg->rho1;  /* ρ_{1,b}: bulk density species 1 */
+    const double rho2_b = cfg->rho2;  /* ρ_{2,b}: bulk density species 2 */
+
     double sum_U11 = 0.0, sum_U12 = 0.0, sum_U22 = 0.0;
+    #pragma omp parallel for reduction(+:sum_U11, sum_U12, sum_U22)
     for (size_t k = 0; k < N; ++k) {
         sum_U11 += U11[k];
         sum_U12 += U12[k];
         sum_U22 += U22[k];
     }
-    const double rho1_b = cfg->rho1;  /* rho_{1,b}: bulk density species 1 */
-    const double rho2_b = cfg->rho2;  /* rho_{2,b}: bulk density species 2 */
 
     const double Phi11b = dA * rho1_b * sum_U11;
     const double Phi12b = dA * rho2_b * sum_U12;
@@ -454,7 +556,7 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
          */
         compute_Phi(Phi11, Phi12, Phi21, Phi22,
                     rho1, rho2, U11, U12, U22,
-                    Nx, Ny, dA);
+                    Nx, Ny, dA, wall_x, wall_y);
 
         /*
          * --- Step 2: Apply Euler-Lagrange operator K_i ---
@@ -466,49 +568,60 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         compute_K(Phi21, Phi22, Phi21b, Phi22b, rho2_b, beta, K2, N);
 
         /*
-         * --- Step 2b: Renormalise K_i to enforce global mass conservation ---
+         * --- Step 2b: Mass renormalisation ---
+         * Ensures total mass is conserved during iteration.
          *
-         * The EL operator K_i = rho_{i,b} * exp(-beta*(Phi_i - Phi_i^b)) fixes
-         * the chemical potential using the BULK reference value Phi_i^b.  Once
-         * the density field becomes inhomogeneous this is only an approximation:
-         * by Jensen's inequality  <exp(x)> >= exp(<x>), so
+         * For PBC: normalize over entire grid (all cells are interior)
+         * For W2/W4: normalize over interior cells only (exclude wall cells)
          *
-         *   (1/N) * sum_r K_i(r)  >=  rho_{i,b}                             (*)
-         *
-         * Every iteration the total mass therefore drifts upward, the
-         * exponential amplifies the inhomogeneity, and the field blows up
-         * (observed as near-zero density almost everywhere plus isolated spikes).
-         *
-         * The thermodynamically correct fix is to determine the chemical
-         * potential mu_i dynamically each iteration so that the density
-         * constraint  (1/N)*sum rho_i = rho_{i,b}  is satisfied exactly.
-         * In practice this means rescaling K_i after the exponential:
-         *
-         *   K_i(r) → K_i(r) * ( N * rho_{i,b} / sum_r K_i(r) )
-         *
-         * which is equivalent to:
-         *   mu_i = (1/beta) * log( rho_{i,b} / <exp(-beta*Phi_i)> )
-         *
-         * In the bulk (uniform rho) the rescaling factor equals 1 and the two
-         * formulations are identical.  Away from the bulk the dynamic mu_i
-         * keeps the total mass pinned at its physical value and prevents the
-         * exponential blow-up described above.
+         * Target: interior cells should average to rho_b
          */
         {
+            int x_start = (mode == BC_W2 || mode == BC_W4) ? 1 : 0;
+            int x_end   = (mode == BC_W2 || mode == BC_W4) ? Nx - 1 : Nx;
+            int y_start = (mode == BC_W4) ? 1 : 0;
+            int y_end   = (mode == BC_W4) ? Ny - 1 : Ny;
+            
             double s1 = 0.0, s2 = 0.0;
-            for (size_t k = 0; k < N; ++k) { s1 += K1[k]; s2 += K2[k]; }
-            double norm1 = ((double)N * rho1_b) / s1;
-            double norm2 = ((double)N * rho2_b) / s2;
-            for (size_t k = 0; k < N; ++k) { K1[k] *= norm1; K2[k] *= norm2; }
+            size_t interior_count = 0;
+            
+            #pragma omp parallel for collapse(2) reduction(+:s1, s2, interior_count)
+            for (int iy = y_start; iy < y_end; ++iy) {
+                for (int ix = x_start; ix < x_end; ++ix) {
+                    size_t k = (size_t)iy * Nx + ix;
+                    s1 += K1[k];
+                    s2 += K2[k];
+                    interior_count++;
+                }
+            }
+            
+            if (interior_count > 0 && s1 > 1e-12 && s2 > 1e-12) {
+                double target1 = (double)interior_count * rho1_b;
+                double target2 = (double)interior_count * rho2_b;
+                double norm1 = target1 / s1;
+                double norm2 = target2 / s2;
+                
+                #pragma omp parallel for collapse(2)
+                for (int iy = y_start; iy < y_end; ++iy) {
+                    for (int ix = x_start; ix < x_end; ++ix) {
+                        size_t k = (size_t)iy * Nx + ix;
+                        K1[k] *= norm1;
+                        K2[k] *= norm2;
+                    }
+                }
+            }
         }
 
         /*
          * --- Step 3: Convergence check (slide "Numerical computation method")
          * Must be done BEFORE mixing while rho_i^(t) is still in rho1/rho2:
          *   ||rho_i^(t+1) - rho_i^(t)|| = xi_i * ||K_i - rho_i^(t)||  < epsilon
+         *
+         * For wall modes, compute error only over interior cells (excluding wall
+         * cells where K≠0 but ρ=0 by boundary constraint).
          */
-        double err = xi1 * solver_l2_diff(K1, rho1, N);
-        double e2  = xi2 * solver_l2_diff(K2, rho2, N);
+        double err = xi1 * solver_l2_diff_interior(K1, rho1, Nx, Ny, mode);
+        double e2  = xi2 * solver_l2_diff_interior(K2, rho2, Nx, Ny, mode);
         if (e2 > err) err = e2;
 
         /*
@@ -523,8 +636,8 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
 
         /* Step 5b: Gentle smoothing to prevent checkerboard instability */
-        smooth_density(rho1, Nx, Ny);
-        smooth_density(rho2, Nx, Ny);
+        smooth_density(rho1, Nx, Ny, mode);
+        smooth_density(rho2, Nx, Ny, mode);
         apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
 
         /* --- Step 6: log and optional snapshot --- */
@@ -553,15 +666,18 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
             printf("  Converged at iteration %d  (err = %.3e < %.3e)\n",
                    iter + 1, err, tol);
             save_snapshot(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
+            save_final(rho1, rho2, xs, ys, Nx, Ny, cfg->output_dir);
             converged = 1;
             break;
         }
     }
 
-    if (!converged)
+    if (!converged) {
         fprintf(stderr,
                 "Warning: solver did not converge in %d iterations.\n",
                 max_iter);
+        save_final(rho1, rho2, xs, ys, Nx, Ny, cfg->output_dir);
+    }
 
     free(U11); free(U12); free(U22);
     free(Phi11); free(Phi12); free(Phi21); free(Phi22);

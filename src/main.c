@@ -75,15 +75,31 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Initial condition: random density placement.
-     * Each grid point gets a random density value in [0, 2*rho_bulk].
+    /* Initial condition: uniform random distribution with small perturbations
+     * This avoids biasing toward any particular pattern and lets the SALR
+     * potential determine the emergent structure naturally.
      */
     {
-        const int N = cfg.grid.nx * cfg.grid.ny;
-        srand(42);
-        for (int i = 0; i < N; ++i) {
-            r1[i] = cfg.rho1 * (2.0 * rand() / (double)(RAND_MAX + 1.0) + 1e-6);
-            r2[i] = cfg.rho2 * (2.0 * rand() / (double)(RAND_MAX + 1.0) + 1e-6);
+        const int nx = cfg.grid.nx;
+        const int ny = cfg.grid.ny;
+        
+        srand((unsigned int)67);  /* Random seed based on time */
+        
+        for (int iy = 0; iy < ny; ++iy) {
+            for (int ix = 0; ix < nx; ++ix) {
+                int idx = iy * nx + ix;
+                
+                /* Uniform random perturbations around bulk density: ±10% */
+                double noise1 = 0.2 * (rand() / (double)RAND_MAX - 0.5);
+                double noise2 = 0.2 * (rand() / (double)RAND_MAX - 0.5);
+                
+                r1[idx] = cfg.rho1 * (1.0 + noise1);
+                r2[idx] = cfg.rho2 * (1.0 + noise2);
+                
+                /* Ensure positive density */
+                if (r1[idx] < 1e-6) r1[idx] = 1e-6;
+                if (r2[idx] < 1e-6) r2[idx] = 1e-6;
+            }
         }
     }
 
@@ -94,6 +110,10 @@ int main(int argc, char **argv) {
     int status = solver_run_binary(r1, r2, &cfg);
 
     /* ── Save final profiles ────────────────────────────────────────────── */
+    /* Note: solver_run_binary() already saves final profiles to output/data/
+     * via save_final(). This additional save to output/ (root) is kept for
+     * backward compatibility with scripts that expect files there.
+     */
     char path[512];
 
     snprintf(path, sizeof(path), "%s/density_species1_final.dat",
