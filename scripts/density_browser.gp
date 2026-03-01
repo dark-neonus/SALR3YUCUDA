@@ -281,6 +281,7 @@ while (running) {
         # quit
         if (ch eq "q" || ch eq "Q") {
             running = 0
+            break
         }
       }  # end digit else (navigation block)
     }  # end browser-mode block (rot_mode else)

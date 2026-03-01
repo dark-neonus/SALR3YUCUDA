@@ -543,6 +543,9 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
     /* Enforce initial boundary mask (slide "Spatial density distributions") */
     apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
 
+    /* Save initial density snapshot before first iteration */
+    save_snapshot(rho1, rho2, xs, ys, Nx, Ny, 0, cfg->output_dir);
+
     int converged = 0;
 
     for (int iter = 0; iter < max_iter; ++iter) {
