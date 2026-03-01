@@ -120,13 +120,13 @@ DRAW = \
 . "set xlabel 'x'; set ylabel 'y'; set zlabel '{/Symbol r}' rotate; set ticslevel 0; set view 60,30;" \
 . "set title '{/Symbol r}_1   scatter' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb1_clip] } else { set cbrange [*:*] };" \
-. "splot f1 u 1:2:(\$3 > rho1_mean*1.2 ? \$3 : 1/0):3 w p pt 7 ps 0.4 lc palette notitle;" \
+. "splot f1 u 1:2:(\$3 > 0 ? \$3 : 1/0):3 w p pt 7 ps 0.4 lc palette notitle;" \
 . "set title '{/Symbol r}_2   scatter' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb2_clip] } else { set cbrange [*:*] };" \
-. "splot f2 u 1:2:(\$3 > rho2_mean*1.2 ? \$3 : 1/0):3 w p pt 7 ps 0.7 lc palette notitle;" \
+. "splot f2 u 1:2:(\$3 > 0 ? \$3 : 1/0):3 w p pt 7 ps 0.7 lc palette notitle;" \
 . "set title '{/Symbol r}_1+{/Symbol r}_2   scatter' font ',11'; set key top right font ',8';" \
 . "if (clip_mode) { set cbrange [0:cb_mix_clip] } else { set cbrange [*:*] };" \
-. "splot f1 u 1:2:(\$3 > rho1_mean*1.2 ? \$3 : 1/0) w p pt 7 ps 0.7 lc rgb '#8B008B' title 'SALR', f2 u 1:2:(\$3 > rho2_mean*1.2 ? \$3 : 1/0) w p pt 7 ps 0.4 lc rgb '#2E8B57' title 'Solvent';" \
+. "splot f1 u 1:2:(\$3 > 0 ? \$3 : 1/0) w p pt 7 ps 0.7 lc rgb '#8B008B' title 'SALR', f2 u 1:2:(\$3 > 0 ? \$3 : 1/0) w p pt 7 ps 0.4 lc rgb '#2E8B57' title 'Solvent';" \
 . "unset key; unset zlabel; unset view; set xlabel 'x'; set ylabel 'y'; set pm3d map;" \
 . "set title '{/Symbol r}_1   heatmap' font ',11';" \
 . "if (clip_mode) { set cbrange [0:cb1_clip] } else { set cbrange [*:*] };" \
