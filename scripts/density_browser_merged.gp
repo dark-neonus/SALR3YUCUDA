@@ -160,7 +160,7 @@ update_labels = "unset label 1; unset label 2; unset label 3; unset label 4; uns
 . "if (param_exists && show_params) { " \
 .   "set label 1 sprintf('Grid: %.1fx%.1f  %dx%d\ndx=%.3f  dy=%.3f  BC=%s', grid_Lx, grid_Ly, grid_nx, grid_ny, grid_dx, grid_dy, grid_bc) at screen 0.01, screen 0.92 font 'Sans:Bold,12' tc rgb '#111111' front; " \
 .   "set label 2 sprintf('Physics:\nT=%.2f  {/Symbol r}_{1}=%.2f\n{/Symbol r}_{2}=%.2f  r_{c}=%.1f', phys_T, phys_rho1, phys_rho2, phys_rc) at screen 0.01, screen 0.80 font 'Sans:Bold,12' tc rgb '#111111' front; " \
-.   "set label 3 sprintf('Solver:\nxi1=%.3f  xi2=%.3f\ntol=%.1e  max=%d', solv_xi1, solv_xi2, solv_tol, solv_max) at screen 0.01, screen 0.63 font 'Sans:Bold,12' tc rgb '#111111' front; " \
+.   "set label 3 sprintf('Solver:\nxi1=%.4f  xi2=%.4f\ntol=%.1e  max=%d', solv_xi1, solv_xi2, solv_tol, solv_max) at screen 0.01, screen 0.63 font 'Sans:Bold,12' tc rgb '#111111' front; " \
 .   "set label 4 sprintf('A_{11}=%.2f,%.2f,%.2f\n{/Symbol a}_{11}=%.3f,%.3f,%.3f', A11_1,A11_2,A11_3,a11_1,a11_2,a11_3) at screen 0.01, screen 0.47 font 'Sans:Bold,10' tc rgb '#333333' front; " \
 .   "set label 5 sprintf('A_{12}=%.2f,%.2f,%.2f\n{/Symbol a}_{12}=%.3f,%.3f,%.3f', A12_1,A12_2,A12_3,a12_1,a12_2,a12_3) at screen 0.01, screen 0.34 font 'Sans:Bold,10' tc rgb '#333333' front; " \
 .   "set label 6 sprintf('A_{22}=%.2f,%.2f,%.2f\n{/Symbol a}_{22}=%.3f,%.3f,%.3f', A22_1,A22_2,A22_3,a22_1,a22_2,a22_3) at screen 0.01, screen 0.21 font 'Sans:Bold,10' tc rgb '#333333' front; " \
