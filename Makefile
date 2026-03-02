@@ -49,11 +49,15 @@ salr_dft: $(MAIN_SRCS)
 # ── Tests ─────────────────────────────────────────────────────────────────────
 tests: test_solver test_potential
 
-test_solver: $(TESTS)/test_solver.c $(SRC_CPU)/solver_cpu.c $(SRC_CPU)/math_utils_cpu.c
+test_solver: $(TESTS)/test_solver.c $(SRC_CPU)/solver_cpu.c $(SRC_CPU)/math_utils_cpu.c $(SRC_CPU)/potential_cpu.c $(SRC_CORE)/config.c $(SRC_CORE)/grid.c $(SRC_UTILS)/io.c
 	$(CC) $(CFLAGS) -I$(INCLUDE) \
 		$(TESTS)/test_solver.c \
 		$(SRC_CPU)/solver_cpu.c \
 		$(SRC_CPU)/math_utils_cpu.c \
+		$(SRC_CPU)/potential_cpu.c \
+		$(SRC_CORE)/config.c \
+		$(SRC_CORE)/grid.c \
+		$(SRC_UTILS)/io.c \
 		-o $(BUILD_DIR)/test_solver -lm
 
 test_potential: $(TESTS)/test_potential.c $(SRC_CPU)/potential_cpu.c

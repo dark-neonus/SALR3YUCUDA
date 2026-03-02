@@ -164,3 +164,66 @@ gnuplot scripts/density_browser.gp
 - **Color modes:**
   - Clipped (default): cbrange = [0, 3×mean] — shows dilute background clearly
   - Auto: cbrange = [min, max] — shows peak values exactly
+
+---
+
+## density_browser_merged.gp (NEW)
+
+**Interactive merged-species density browser** showing both species in a unified view.
+
+Displays side-by-side:
+1. **3D scatter** with purple (SALR/species1) and green (Solvent/species2) points
+2. **2D heatmap** of total density (ρ₁+ρ₂)
+
+### Usage
+
+```bash
+gnuplot scripts/density_browser_merged.gp
+```
+
+Or specify output directory:
+```bash
+gnuplot -e "output_dir='output'" scripts/density_browser_merged.gp
+```
+
+### Controls
+
+| Key | Action |
+|---|---|
+| `n` / Right arrow | Next frame (+1) |
+| `p` / Left arrow | Previous frame (-1) |
+| `]` / Page Down | Jump +10 frames |
+| `[` / Page Up | Jump -10 frames |
+| `N` / `}` | Jump +100 frames |
+| `P` / `{` | Jump -100 frames |
+| `f` / Home | First frame |
+| `l` / End | Last frame |
+| `0-9` then Enter | Jump to specific frame number |
+| `c` | Toggle color clipping (bulk scale ↔ full auto) |
+| `t` | Toggle transparency mode (enhance visibility of overlapping structures) |
+| `i` | Toggle parameter info display (on ↔ off) |
+| `d` | Toggle detailed A/α coefficients (on ↔ off) |
+| `R` | Enter rotation mode (full-window 3D, click-drag to rotate) |
+| `q` | Quit |
+
+### Features
+
+- **Bivariate visualization:** Purple points (SALR) and green points (Solvent) in the same 3D view
+- **Transparency mode:** Press `t` to enable semi-transparent points, reducing occlusion in dense regions
+- **Rotation mode:** Press `R` for full-window 3D view with click-and-drag rotation
+- **Same timeline as density_browser.gp:** All navigation shortcuts work identically
+- **Parameter display:** Press `i` to show/hide simulation parameters overlaid on the plot
+  - **Basic info:** Grid size, boundary conditions, physics parameters (T, ρ₁, ρ₂, r_c), solver settings (ξ₁, ξ₂)
+  - **Detailed coefficients:** Press `d` to expand and show all Yukawa A and α coefficients
+  - Parameters are automatically loaded from `output/parameters.cfg`
+
+### Display
+
+- **Left panel:** 3D scatter with species-specific coloring
+  - Purple (#8B008B): Species 1 (SALR)
+  - Green (#2E8B57): Species 2 (Solvent)
+- **Right panel:** 2D heatmap overlay with alpha-blended colors
+  - Purple for species 1, green for species 2
+  - Transparency (alpha) is proportional to local density (more particles = less transparent)
+  - Black background shows regions with no particles
+  - Both species are overlaid, allowing visualization of spatial overlap

@@ -428,6 +428,11 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     { FILE *lf = fopen(log_path, "w");
       if (lf) { fprintf(lf, "# iter  L2_error\n"); fclose(lf); } }
 
+    /* save simulation parameters */
+    char param_path[512];
+    snprintf(param_path, sizeof(param_path), "%s/parameters.cfg", cfg->output_dir);
+    io_save_parameters(param_path, cfg);
+
     /* ── transfer initial densities to GPU ──────────────────────────────── */
     CUDA_CHECK(cudaMemcpy(d_rho1, rho1, sz, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_rho2, rho2, sz, cudaMemcpyHostToDevice));

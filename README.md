@@ -98,6 +98,20 @@ Produces individual PNGs for each species and convergence plot.
 > use `T = 2.0` and adjust the mixing coefficients `xi1=0.05`/`xi2=0.05` for stability.
 > See [docs/BUG_REPORT.md](docs/BUG_REPORT.md) for details.
 
+## Output files
+
+After running a simulation, the `output/` directory contains:
+
+| File | Description |
+|------|-------------|
+| `parameters.cfg` | **Snapshot of all simulation parameters** used in the run (grid, physics, solver settings, Yukawa coefficients) |
+| `convergence.dat` | L2 error vs iteration number (2 columns: iter, error) |
+| `density_species1_final.dat` | Converged density profile for species 1 (3 columns: x, y, ρ₁) |
+| `density_species2_final.dat` | Converged density profile for species 2 (3 columns: x, y, ρ₂) |
+| `data/density_species{1,2}_iter_NNNNNN.dat` | Intermediate snapshots saved every `save_every` iterations |
+
+The `parameters.cfg` file is automatically created at the start of each simulation and stores all configuration values for reproducibility. The interactive browser (`density_browser_merged.gp`) reads this file and displays parameters overlaid on the visualization.
+
 > Full instructions: [docs/BUILD.md](docs/BUILD.md)
 
 ## Configuration

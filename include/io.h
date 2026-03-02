@@ -21,4 +21,10 @@ int io_save_density_2d(const char *filename,
 /* Append one line to a convergence log: iteration, L2 error */
 int io_log_convergence(const char *filename, int iteration, double error);
 
+/* Forward declaration for SimConfig */
+struct SimConfig;
+
+/* Save simulation parameters to a text file */
+int io_save_parameters(const char *filename, const struct SimConfig *config);
+
 #endif /* IO_H */

@@ -533,6 +533,11 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         if (lf) { fprintf(lf, "# iter  L2_error\n"); fclose(lf); }
     }
 
+    /* Save simulation parameters to output directory */
+    char param_path[512];
+    snprintf(param_path, sizeof(param_path), "%s/parameters.cfg", cfg->output_dir);
+    io_save_parameters(param_path, cfg);
+
     /* Slide "Numerical computation method": xi1, xi2 — Picard mixing params */
     const int    max_iter = cfg->solver.max_iterations;
     const double tol      = cfg->solver.tolerance;  /* epsilon */
