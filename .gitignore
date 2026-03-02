@@ -55,6 +55,12 @@ venv/
 *~
 *.orig
 
+docs/report/SALR3YUCUDA/.overleaf
+docs/report/SALR3YUCUDA/*.aux
+docs/report/SALR3YUCUDA/*.fdb_latexmk
+docs/report/SALR3YUCUDA/*.fls
+docs/report/SALR3YUCUDA/*.log
+
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

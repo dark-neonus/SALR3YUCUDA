@@ -90,8 +90,8 @@ int main(int argc, char **argv) {
                 int idx = iy * nx + ix;
                 
                 /* Uniform random perturbations around bulk density: ±10% */
-                double noise1 = 0.2 * (rand() / (double)RAND_MAX - 0.5);
-                double noise2 = 0.2 * (rand() / (double)RAND_MAX - 0.5);
+                double noise1 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
+                double noise2 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
                 
                 r1[idx] = cfg.rho1 * (1.0 + noise1);
                 r2[idx] = cfg.rho2 * (1.0 + noise2);
