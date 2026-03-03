@@ -10,9 +10,9 @@
 #ifndef POTENTIAL_H
 #define POTENTIAL_H
 
-#define YUKAWA_TERMS 3   /* number of Yukawa terms in the pair potential */
+#define YUKAWA_TERMS 3
 
-/* ── Potential / interaction parameters ──────────────────────────────────── */
+/* Potential parameters */
 typedef struct {
     double cutoff_radius;                      /* interaction cutoff r_c  */
 

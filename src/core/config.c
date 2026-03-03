@@ -11,7 +11,6 @@
 #include <ctype.h>
 #include "../../include/config.h"
 
-/* ── helpers ────────────────────────────────────────────────────────────── */
 
 static char *trim(char *s) {
     while (isspace((unsigned char)*s)) ++s;
@@ -21,7 +20,6 @@ static char *trim(char *s) {
     return s;
 }
 
-/* ── parser ─────────────────────────────────────────────────────────────── */
 
 int config_load(const char *filename, SimConfig *config) {
     FILE *f = fopen(filename, "r");
@@ -68,7 +66,7 @@ int config_load(const char *filename, SimConfig *config) {
         char *key = trim(p);
         char *val = trim(eq + 1);
 
-        /* ── [grid] ───────────────────────────────────────────────────── */
+        /* [grid] section */
         if (strcmp(section, "grid") == 0) {
             if      (strcmp(key, "nx") == 0) config->grid.nx = atoi(val);
             else if (strcmp(key, "ny") == 0) config->grid.ny = atoi(val);
@@ -82,14 +80,14 @@ int config_load(const char *filename, SimConfig *config) {
                 else                             config->boundary_mode = BC_PBC;
             }
         }
-        /* ── [physics] ────────────────────────────────────────────────── */
+        /* [physics] section */
         else if (strcmp(section, "physics") == 0) {
             if      (strcmp(key, "temperature")   == 0) config->temperature              = atof(val);
             else if (strcmp(key, "rho1")          == 0) config->rho1                     = atof(val);
             else if (strcmp(key, "rho2")          == 0) config->rho2                     = atof(val);
             else if (strcmp(key, "cutoff_radius") == 0) config->potential.cutoff_radius  = atof(val);
         }
-        /* ── [interaction] ────────────────────────────────────────────── */
+        /* [interaction] section */
         else if (strcmp(section, "interaction") == 0) {
             /* Keys: A_IJ_M and a_IJ_M where I,J in {1,2}, M in {1,2,3} */
             int si, sj, sm;
@@ -109,14 +107,14 @@ int config_load(const char *filename, SimConfig *config) {
                 }
             }
         }
-        /* ── [solver] ─────────────────────────────────────────────────── */
+        /* [solver] section */
         else if (strcmp(section, "solver") == 0) {
             if      (strcmp(key, "max_iterations") == 0) config->solver.max_iterations = atoi(val);
             else if (strcmp(key, "tolerance")      == 0) config->solver.tolerance      = atof(val);
             else if (strcmp(key, "xi1")            == 0) config->solver.xi1            = atof(val);
             else if (strcmp(key, "xi2")            == 0) config->solver.xi2            = atof(val);
         }
-        /* ── [output] ─────────────────────────────────────────────────── */
+        /* [output] section */
         else if (strcmp(section, "output") == 0) {
             if      (strcmp(key, "output_dir") == 0) snprintf(config->output_dir, sizeof(config->output_dir), "%s", val);
             else if (strcmp(key, "save_every") == 0) config->save_every = atoi(val);

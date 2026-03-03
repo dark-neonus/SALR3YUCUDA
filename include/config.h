@@ -12,14 +12,14 @@
 #include "potential.h"
 #include "solver.h"
 
-/* ── Boundary condition modes ────────────────────────────────────────────── */
+/* Boundary condition modes */
 typedef enum {
     BC_PBC,  /* periodic in both x and y                                   */
     BC_W2,   /* hard walls at x=0 and x=Lx; periodic in y                  */
     BC_W4    /* hard walls on all four sides                                */
 } BoundaryMode;
 
-/* ── Master configuration structure ─────────────────────────────────────── */
+/* Master configuration structure */
 typedef struct SimConfig {
     GridParams      grid;
     PotentialParams potential;

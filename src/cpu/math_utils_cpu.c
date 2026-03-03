@@ -51,3 +51,53 @@ void vec_add_scaled(const double *a, double alpha,
         c[i] = alpha * a[i] + beta * b[i];
     }
 }
+
+/* Trapezoidal rule: integral = h * (y[0]/2 + y[1] + ... + y[n-2] + y[n-1]/2) */
+double integrate_trapezoidal(const double *y, size_t n, double h) {
+    if (n < 2) return 0.0;
+    
+    double sum = 0.0;
+    #pragma omp parallel for reduction(+:sum)
+    for (size_t i = 1; i < n - 1; ++i) {
+        sum += y[i];
+    }
+    
+    return h * (0.5 * y[0] + sum + 0.5 * y[n - 1]);
+}
+
+/* Simpson's rule: requires odd n (even number of intervals). Uses 1/3 rule */
+double integrate_simpson(const double *y, size_t n, double h) {
+    if (n < 3 || n % 2 == 0) return integrate_trapezoidal(y, n, h);
+    
+    double sum_odd = 0.0, sum_even = 0.0;
+    
+    #pragma omp parallel for reduction(+:sum_odd)
+    for (size_t i = 1; i < n - 1; i += 2) {
+        sum_odd += y[i];
+    }
+    
+    #pragma omp parallel for reduction(+:sum_even)
+    for (size_t i = 2; i < n - 1; i += 2) {
+        sum_even += y[i];
+    }
+    
+    return (h / 3.0) * (y[0] + 4.0 * sum_odd + 2.0 * sum_even + y[n - 1]);
+}
+
+/* 2D trapezoidal rule: applies trapezoidal in both x and y directions */
+double integrate_2d_trapezoidal(const double *z, size_t nx, size_t ny, double dx, double dy) {
+    if (nx < 2 || ny < 2) return 0.0;
+    
+    double sum = 0.0;
+    
+    #pragma omp parallel for reduction(+:sum)
+    for (size_t iy = 0; iy < ny; ++iy) {
+        double wy = (iy == 0 || iy == ny - 1) ? 0.5 : 1.0;
+        for (size_t ix = 0; ix < nx; ++ix) {
+            double wx = (ix == 0 || ix == nx - 1) ? 0.5 : 1.0;
+            sum += wx * wy * z[iy * nx + ix];
+        }
+    }
+    
+    return dx * dy * sum;
+}

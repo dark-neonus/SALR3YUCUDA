@@ -1,9 +1,5 @@
 /*
- * solver_cuda.cu — CUDA Picard DFT solver for 2-component SALR mixture
- *
- * All heavy loops (convolution, K operator, mixing, smoothing, reduction)
- * run as GPU kernels. Data stays on device between iterations; only copied
- * back for periodic snapshots and final output.
+ * solver_cuda.cu - CUDA Picard DFT solver for 2-component SALR mixture
  */
 
 #include <stdio.h>
@@ -40,10 +36,7 @@ static inline int divup(int n, int d) { return (n + d - 1) / d; }
 static inline int nblk(int N) { return divup(N, BLK); }
 static inline int nblk_red(int N) { return divup(N, BLK * 2); }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- *  DEVICE: 3-Yukawa potential U(r) = Σ A_m·exp(−α_m·r)/r
- * ═══════════════════════════════════════════════════════════════════════════ */
-
+/* Device: 3-Yukawa potential U(r) = sum(A_m * exp(-alpha_m * r) / r) */
 __device__ static double dev_potential(
     double r, const double *A, const double *alpha, double rc)
 {
@@ -54,11 +47,9 @@ __device__ static double dev_potential(
     return s;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- *  KERNELS
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* KERNELS */
 
-/* Build potential lookup table: one thread per (diy,dix) offset */
+/* Build potential lookup table */
 __global__ void k_build_pot(
     double *tbl, const double *A, const double *alpha, double rc,
     int nx, int ny, double dx, double dy, int wx, int wy)
@@ -72,12 +63,7 @@ __global__ void k_build_pot(
     tbl[id] = dev_potential(sqrt(drx * drx + dry * dry), A, alpha, rc);
 }
 
-/* ── Φ convolution — the main O(N²) bottleneck fully parallelised ────────
- *
- *  Each thread computes Φ₁₁, Φ₁₂, Φ₂₁, Φ₂₂ at one grid point by
- *  summing ρ(r')·U(|r−r'|) over all source points r'.
- *  __ldg() directs potential-table reads through the read-only cache.
- */
+/* Phi convolution kernel - each thread computes Phi fields at one grid point */
 __global__ void k_compute_Phi(
     double * __restrict__ P11, double * __restrict__ P12,
     double * __restrict__ P21, double * __restrict__ P22,
@@ -121,7 +107,7 @@ __global__ void k_compute_Phi(
     P21[id] = p21 * dA;  P22[id] = p22 * dA;
 }
 
-/* K_i = ρ_b · exp(−β·(Φ_a + Φ_b − Φ_ab − Φ_bb)), clamped to ±500 */
+/* Euler-Lagrange operator: K_i = rho_b * exp(-beta*(Phi_a+Phi_b-Phi_ab-Phi_bb)) */
 __global__ void k_compute_K(
     const double *Pa, const double *Pb, double Pab, double Pbb,
     double rho_b, double beta, double *K, int N)
@@ -178,7 +164,7 @@ __global__ void k_smooth(
                    + in[ym * nx + ix] + in[yp * nx + ix]);
 }
 
-/* (a−b)² per element, zero at wall cells — feeds into L2 reduction */
+/* (a-b)^2 per element, zero at wall cells */
 __global__ void k_sq_diff(
     const double *a, const double *b, double *out,
     int nx, int ny, int mode)
@@ -192,8 +178,7 @@ __global__ void k_sq_diff(
     out[id] = d * d;
 }
 
-/* ── Block-level tree reduction (shared memory) ─────────────────────────
- *  Each block reduces 2×BLK elements to one partial sum. */
+/* Block-level tree reduction using shared memory */
 __global__ void k_reduce(const double *in, double *out, int N)
 {
     extern __shared__ double sh[];
@@ -252,11 +237,9 @@ __global__ void k_scale_interior(
     data[id] *= factor;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- *  HOST HELPERS
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* HOST HELPERS */
 
-/* Two-pass GPU sum: kernel reduces to per-block partials, host finalises */
+/* Two-pass GPU sum using reduction kernel */
 static double gpu_sum(const double *d_data, double *d_part, double *h_part, int N)
 {
     int nb = nblk_red(N);
@@ -314,9 +297,7 @@ static void save_final(const double *r1, const double *r2,
     io_save_density_2d(p2, xs, ys, r2, (size_t)nx, (size_t)ny);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- *  PUBLIC API  (extern "C" so main.c can call it)
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* PUBLIC API */
 
 extern "C" double solver_l2_diff(const double *a, const double *b, size_t n)
 {
@@ -327,7 +308,7 @@ extern "C" double solver_l2_diff(const double *a, const double *b, size_t n)
 
 extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg)
 {
-    /* ── grid / physics constants ───────────────────────────────────────── */
+    /* Grid/physics constants */
     const int    Nx   = cfg->grid.nx;
     const int    Ny   = cfg->grid.ny;
     const double dx   = cfg->grid.dx;
@@ -350,7 +331,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     const int    sav_ev = cfg->save_every;
     const double rc     = cfg->potential.cutoff_radius;
 
-    /* ── print GPU info ─────────────────────────────────────────────────── */
+    /* Print GPU info */
     {
         int dev; cudaDeviceProp prop;
         CUDA_CHECK(cudaGetDevice(&dev));
@@ -361,7 +342,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
         printf("  Grid: %dx%d = %d points, %d interior\n", Nx, Ny, N, interior);
     }
 
-    /* ── device allocations ─────────────────────────────────────────────── */
+    /* Device allocations */
     double *d_rho1, *d_rho2;
     double *d_U11,  *d_U12,  *d_U22;
     double *d_P11,  *d_P12,  *d_P21,  *d_P22;
@@ -398,15 +379,14 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     CUDA_CHECK(cudaMemcpy(d_A22, cfg->potential.A[1][1],     ysz, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_a22, cfg->potential.alpha[1][1], ysz, cudaMemcpyHostToDevice));
 
-    /* ── build potential tables on GPU ──────────────────────────────────── */
+    /* Build potential tables on GPU */
     int g = nblk(N);
     k_build_pot<<<g, BLK>>>(d_U11, d_A11, d_a11, rc, Nx, Ny, dx, dy, wx, wy);
     k_build_pot<<<g, BLK>>>(d_U12, d_A12, d_a12, rc, Nx, Ny, dx, dy, wx, wy);
     k_build_pot<<<g, BLK>>>(d_U22, d_A22, d_a22, rc, Nx, Ny, dx, dy, wx, wy);
     CUDA_CHECK(cudaDeviceSynchronize());
 
-    /* ── bulk Φ fields (numerical sum of potential tables on GPU) ────────
-     *  Φ_11,b = dA·ρ₁_b·Σ U₁₁,  Φ_12,b = dA·ρ₂_b·Σ U₁₂, etc. */
+    /* Bulk Phi fields from numerical sum of potential tables */
     double sU11 = gpu_sum(d_U11, d_part, h_part, N);
     double sU12 = gpu_sum(d_U12, d_part, h_part, N);
     double sU22 = gpu_sum(d_U22, d_part, h_part, N);
@@ -416,7 +396,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     const double Phi21b = dA * rho1_b * sU12;
     const double Phi22b = dA * rho2_b * sU22;
 
-    /* ── coordinate arrays for file output ──────────────────────────────── */
+    /* Coordinate arrays for file output */
     double *xs = (double *)malloc(Nx * sizeof(double));
     double *ys = (double *)malloc(Ny * sizeof(double));
     for (int i = 0; i < Nx; ++i) xs[i] = (i + 0.5) * dx;
@@ -433,7 +413,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     snprintf(param_path, sizeof(param_path), "%s/parameters.cfg", cfg->output_dir);
     io_save_parameters(param_path, cfg);
 
-    /* ── transfer initial densities to GPU ──────────────────────────────── */
+    /* Transfer initial densities to GPU */
     CUDA_CHECK(cudaMemcpy(d_rho1, rho1, sz, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_rho2, rho2, sz, cudaMemcpyHostToDevice));
     k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
@@ -444,22 +424,19 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     CUDA_CHECK(cudaMemcpy(rho2, d_rho2, sz, cudaMemcpyDeviceToHost));
     save_snap(rho1, rho2, xs, ys, Nx, Ny, 0, cfg->output_dir);
 
-    /* ── CUDA timing events ─────────────────────────────────────────────── */
+    /* CUDA timing events */
     cudaEvent_t t_start, t_stop;
     CUDA_CHECK(cudaEventCreate(&t_start));
     CUDA_CHECK(cudaEventCreate(&t_stop));
     CUDA_CHECK(cudaEventRecord(t_start));
 
-    /* ═══════════════════════════════════════════════════════════════════════
-     *  PICARD ITERATION LOOP
-     * ═══════════════════════════════════════════════════════════════════════ */
+    /* PICARD ITERATION LOOP */
     int converged = 0;
 
     for (int iter = 0; iter < max_it; ++iter) {
 
-        /* 1. Φ convolution on GPU (O(N²) parallelised over N threads) */
-        k_compute_Phi<<<g, BLK>>>(
-            d_P11, d_P12, d_P21, d_P22,
+        /* 1. Phi convolution on GPU */
+        k_compute_Phi<<<g, BLK>>>(            d_P11, d_P12, d_P21, d_P22,
             d_rho1, d_rho2, d_U11, d_U12, d_U22,
             Nx, Ny, dA, wx, wy);
 
@@ -467,7 +444,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
         k_compute_K<<<g, BLK>>>(d_P11, d_P12, Phi11b, Phi12b, rho1_b, beta, d_K1, N);
         k_compute_K<<<g, BLK>>>(d_P21, d_P22, Phi21b, Phi22b, rho2_b, beta, d_K2, N);
 
-        /* 2b. Mass renormalisation: interior mean K → ρ_b */
+        /* 2b. Mass renormalization */
         {
             double s1 = gpu_sum_interior(d_K1, d_part, h_part, Nx, Ny, mode);
             double s2 = gpu_sum_interior(d_K2, d_part, h_part, Nx, Ny, mode);
@@ -554,7 +531,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
         save_final(rho1, rho2, xs, ys, Nx, Ny, cfg->output_dir);
     }
 
-    /* ── cleanup ────────────────────────────────────────────────────────── */
+    /* Cleanup */
     CUDA_CHECK(cudaEventDestroy(t_start));
     CUDA_CHECK(cudaEventDestroy(t_stop));
 

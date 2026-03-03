@@ -7,7 +7,7 @@
 #ifndef GRID_H
 #define GRID_H
 
-/* ── Grid parameters ────────────────────────────────────────────────────── */
+/* Grid parameters */
 typedef struct {
     int    nx;       /* number of grid points along x   (Lx / dx)           */
     int    ny;       /* number of grid points along y   (Ly / dy)           */
@@ -22,10 +22,7 @@ typedef struct {
 double *grid_create_x(const GridParams *g);
 double *grid_create_y(const GridParams *g);
 
-/* Total number of grid points: nx * ny */
-int grid_total_points(const GridParams *g);
-
-/* Total number of grid points */
+/* Total grid points: nx * ny */
 int grid_total_points(const GridParams *g);
 
 #endif /* GRID_H */
