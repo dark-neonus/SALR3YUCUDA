@@ -63,10 +63,11 @@ int main(int argc, char **argv) {
 
     int block_size = 256;
 
-    /* 1D test sizes with adaptive iterations for ~60s runtime */
+    /* 1D test sizes */
     int sizes[] = {1000001, 10000001, 50000001, 100000001, 200000001, 500000001};
     int iterations_per_size[] = {20000, 2000, 400, 200, 100, 40};
     int num_sizes = sizeof(sizes) / sizeof(sizes[0]);
+    const int NUM_TRIALS = 5;  /* Multiple trials for statistics */
 
     printf("1D Integration (sin(x) over [0,pi], exact=2.0)\n");
     printf("%-12s %-12s %-12s %-15s %-15s\n", "N", "Trap(ms)", "Simp(ms)", "Trap err", "Simp err");
@@ -85,35 +86,72 @@ int main(int argc, char **argv) {
         k_fill_sin_1d<<<grid_size, block_size>>>(d_y, n, h);
         CUDA_CHECK(cudaDeviceSynchronize());
 
-        printf("Running N=%d with %d iterations... ", n, iters);
+        printf("Running N=%d with %d iterations × %d trials... ", n, iters, NUM_TRIALS);
         fflush(stdout);
 
-        /* Benchmark trapezoidal */
-        CUDA_CHECK(cudaEventRecord(start));
-        double trap_result = 0;
-        for (int i = 0; i < iters; ++i) {
-            trap_result = integrate_trapezoidal(d_y, n, h);
+        /* Warmup runs */
+        for (int w = 0; w < 3; ++w) {
+            integrate_trapezoidal(d_y, n, h);
+            integrate_simpson(d_y, n, h);
         }
-        CUDA_CHECK(cudaEventRecord(stop));
-        CUDA_CHECK(cudaEventSynchronize(stop));
-        float trap_time;
-        CUDA_CHECK(cudaEventElapsedTime(&trap_time, start, stop));
-        trap_time /= iters;
+        CUDA_CHECK(cudaDeviceSynchronize());
+
+        /* Multiple trials for trapezoidal */
+        float trap_times[NUM_TRIALS];
+        double trap_result = 0;
+        for (int trial = 0; trial < NUM_TRIALS; ++trial) {
+            CUDA_CHECK(cudaDeviceSynchronize());
+            CUDA_CHECK(cudaEventRecord(start));
+            for (int i = 0; i < iters; ++i) {
+                trap_result = integrate_trapezoidal(d_y, n, h);
+            }
+            CUDA_CHECK(cudaEventRecord(stop));
+            CUDA_CHECK(cudaEventSynchronize(stop));
+            CUDA_CHECK(cudaEventElapsedTime(&trap_times[trial], start, stop));
+            trap_times[trial] /= iters;
+        }
         double trap_error = fabs(trap_result - 2.0);
 
-        /* Benchmark Simpson's */
-        CUDA_CHECK(cudaEventRecord(start));
+        /* Multiple trials for Simpson's */
+        float simp_times[NUM_TRIALS];
         double simp_result = 0;
-        for (int i = 0; i < iters; ++i) {
-            simp_result = integrate_simpson(d_y, n, h);
+        for (int trial = 0; trial < NUM_TRIALS; ++trial) {
+            CUDA_CHECK(cudaDeviceSynchronize());
+            CUDA_CHECK(cudaEventRecord(start));
+            for (int i = 0; i < iters; ++i) {
+                simp_result = integrate_simpson(d_y, n, h);
+            }
+            CUDA_CHECK(cudaEventRecord(stop));
+            CUDA_CHECK(cudaEventSynchronize(stop));
+            CUDA_CHECK(cudaEventElapsedTime(&simp_times[trial], start, stop));
+            simp_times[trial] /= iters;
         }
-        CUDA_CHECK(cudaEventRecord(stop));
-        CUDA_CHECK(cudaEventSynchronize(stop));
-        float simp_time;
-        CUDA_CHECK(cudaEventElapsedTime(&simp_time, start, stop));
-        simp_time /= iters;
         double simp_error = fabs(simp_result - 2.0);
         printf("done\n");
+
+        /* Calculate mean times (using median for robustness) */
+        float trap_sorted[NUM_TRIALS], simp_sorted[NUM_TRIALS];
+        for (int i = 0; i < NUM_TRIALS; ++i) {
+            trap_sorted[i] = trap_times[i];
+            simp_sorted[i] = simp_times[i];
+        }
+        /* Simple bubble sort for median */
+        for (int i = 0; i < NUM_TRIALS - 1; ++i) {
+            for (int j = 0; j < NUM_TRIALS - i - 1; ++j) {
+                if (trap_sorted[j] > trap_sorted[j + 1]) {
+                    float tmp = trap_sorted[j];
+                    trap_sorted[j] = trap_sorted[j + 1];
+                    trap_sorted[j + 1] = tmp;
+                }
+                if (simp_sorted[j] > simp_sorted[j + 1]) {
+                    float tmp = simp_sorted[j];
+                    simp_sorted[j] = simp_sorted[j + 1];
+                    simp_sorted[j + 1] = tmp;
+                }
+            }
+        }
+        float trap_time = trap_sorted[NUM_TRIALS / 2];  /* Median */
+        float simp_time = simp_sorted[NUM_TRIALS / 2];  /* Median */
 
         printf("%-12d %-12.4f %-12.4f %-15.2e %-15.2e\n",
                n, trap_time, simp_time, trap_error, simp_error);
@@ -149,22 +187,47 @@ int main(int argc, char **argv) {
         k_fill_sin_2d<<<grid_size, block_size>>>(d_z, nx, ny, dx, dy);
         CUDA_CHECK(cudaDeviceSynchronize());
 
-        printf("Running %dx%d with %d iterations... ", nx, ny, iters_2d);
+        printf("Running %dx%d with %d iterations × %d trials... ", nx, ny, iters_2d, NUM_TRIALS);
         fflush(stdout);
 
-        /* Benchmark 2D trapezoidal */
-        CUDA_CHECK(cudaEventRecord(start));
-        double trap2d_result = 0;
-        for (int i = 0; i < iters_2d; ++i) {
-            trap2d_result = integrate_2d_trapezoidal(d_z, nx, ny, dx, dy);
+        /* Warmup runs */
+        for (int w = 0; w < 3; ++w) {
+            integrate_2d_trapezoidal(d_z, nx, ny, dx, dy);
         }
-        CUDA_CHECK(cudaEventRecord(stop));
-        CUDA_CHECK(cudaEventSynchronize(stop));
-        float trap2d_time;
-        CUDA_CHECK(cudaEventElapsedTime(&trap2d_time, start, stop));
-        trap2d_time /= iters_2d;
+        CUDA_CHECK(cudaDeviceSynchronize());
+
+        /* Multiple trials for 2D trapezoidal */
+        float trap2d_times[NUM_TRIALS];
+        double trap2d_result = 0;
+        for (int trial = 0; trial < NUM_TRIALS; ++trial) {
+            CUDA_CHECK(cudaDeviceSynchronize());
+            CUDA_CHECK(cudaEventRecord(start));
+            for (int i = 0; i < iters_2d; ++i) {
+                trap2d_result = integrate_2d_trapezoidal(d_z, nx, ny, dx, dy);
+            }
+            CUDA_CHECK(cudaEventRecord(stop));
+            CUDA_CHECK(cudaEventSynchronize(stop));
+            CUDA_CHECK(cudaEventElapsedTime(&trap2d_times[trial], start, stop));
+            trap2d_times[trial] /= iters_2d;
+        }
         double trap2d_error = fabs(trap2d_result - 4.0);
         printf("done\n");
+
+        /* Calculate median time */
+        float trap2d_sorted[NUM_TRIALS];
+        for (int i = 0; i < NUM_TRIALS; ++i) {
+            trap2d_sorted[i] = trap2d_times[i];
+        }
+        for (int i = 0; i < NUM_TRIALS - 1; ++i) {
+            for (int j = 0; j < NUM_TRIALS - i - 1; ++j) {
+                if (trap2d_sorted[j] > trap2d_sorted[j + 1]) {
+                    float tmp = trap2d_sorted[j];
+                    trap2d_sorted[j] = trap2d_sorted[j + 1];
+                    trap2d_sorted[j + 1] = tmp;
+                }
+            }
+        }
+        float trap2d_time = trap2d_sorted[NUM_TRIALS / 2];  /* Median */
 
         printf("%-12d %-12.4f %-15.2e\n", N, trap2d_time, trap2d_error);
         fprintf(outfile, "%d trap2d %f %e\n", N, trap2d_time, trap2d_error);
