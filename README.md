@@ -1,55 +1,52 @@
 # SALR3YUCUDA
-Short-Range Attraction and Long-Range Repulsion Colloids with 3 Yukawa potentials calculation using CUDA , developed as a part of the "Architecture of Computer Systems" course.
-## What this project does
 
-Numerically solves a system of nonlinear integral equations (mean-field DFT) describing the spatial density distribution of SALR particles confined between two walls.
+Numerical solver for the mean-field Density Functional Theory (DFT) equations describing spatial density distributions in two-component SALR (Short-Range Attraction, Long-Range Repulsion) colloidal systems with Triple Yukawa pair potentials. Developed as part of the "Architecture of Computer Systems" course.
 
-**Development plan:** pure C (CPU) first → CUDA GPU acceleration later.
+## Overview
 
-## Project structure
+The program solves a system of nonlinear integral equations via Picard iteration to obtain equilibrium density profiles $\rho_1(\mathbf{r})$ and $\rho_2(\mathbf{r})$ for a binary mixture confined in a two-dimensional domain with periodic or hard-wall boundary conditions.
+
+**Current state:** the CPU (pure C) implementation is complete and functional. CUDA GPU acceleration is planned as the next development phase.
+
+## Project Structure
 
 ```
-├── configs/            # Simulation parameters (.cfg files)
-│   └── default.cfg     # 2D test case
-├── include/            # C headers (shared between CPU and future CUDA)
-│   ├── config.h        #   config parser interface
-│   ├── grid.h          #   computational grid
-│   ├── potential.h     #   SALR potential + Aij interaction matrix
-│   ├── solver.h        #   iterative DFT solver
-│   ├── math_utils.h    #   vector/matrix math
-│   └── io.h            #   file I/O helpers
-├── src/
-│   ├── main.c          # Entry point
-│   ├── core/           # Config parser, grid initialisation
-│   ├── cpu/            # CPU implementations (active development)
-│   ├── cuda/           # GPU kernels (future — will mirror cpu/)
-│   ├── math/           # Specialised math routines (future)
-│   └── utils/          # I/O, timing, helpers
-├── tests/              # Validation programs
-├── scripts/            # Python plotting / post-processing
-├── output/             # Runtime data (git-ignored)
-├── studying/           # Standalone CUDA learning examples (separate)
-├── docs/BUILD.md       # Build instructions
-├── run.sh              # One-shot build-and-run script (see below)
-├── CMakeLists.txt      # CMake build (pure C)
-└── Makefile            # Alternative Make build (pure C)
+configs/            Configuration files (.cfg)
+include/            C headers (shared between CPU and future CUDA builds)
+src/
+  main.c            Entry point
+  core/             Configuration parser, grid initialisation
+  cpu/              CPU implementations (solver, potential, math utilities)
+  cuda/             GPU kernels (planned)
+  math/             Specialised math routines (planned)
+  utils/            File I/O helpers
+tests/              Validation and test programs
+scripts/            Python and gnuplot visualisation scripts
+output/             Simulation output (not tracked in version control)
+docs/               Build instructions, bug reports, project documentation
 ```
 
-## Build & run
+## Requirements
 
-Requires: **CMake ≥ 3.12** and a **C11 compiler** (gcc / clang).
+- CMake >= 3.18
+- C11 compiler (GCC or Clang)
+- OpenMP support
+- Python 3 with matplotlib and numpy (for visualisation); install via:
+  ```bash
+  pip install -r requirements.txt
+  ```
 
-### Quick start — `run.sh`
+## Build and Run
+
+### Using the provided script
 
 ```bash
-./run.sh              # build + run simulation + run all tests (default)
-./run.sh build        # configure & compile only
-./run.sh sim          # build + run main simulation
-./run.sh tests        # build + run all test binaries
-./run.sh clean        # delete the build/ directory
+./run.sh              # build, run simulation, and execute all tests
+./run.sh build        # configure and compile only
+./run.sh sim          # build and run the main simulation
+./run.sh tests        # build and run all test binaries
+./run.sh clean        # remove the build/ directory
 ```
-
-The script always (re-)runs CMake before building, so it is safe to call after any source or config change.
 
 ### Manual build
 
@@ -62,83 +59,61 @@ cmake --build build --parallel
 ./build/test_potential
 ```
 
+See [docs/BUILD.md](docs/BUILD.md) for full build instructions.
+
 ### Visualisation
 
-After a completed run, visualize the results:
+After a completed simulation run:
 
-**Recommended: Python visualization (matplotlib)**
 ```bash
-# Two-color joint heatmap (blue=species1, red=species2, purple=both)
+pip install -r requirements.txt   # if not already installed
 python3 scripts/plot_joint_heatmap.py output/
-
-# Individual species heatmaps (requires gnuplot)
 python3 scripts/plot_density.py output/
 ```
 
-Requires: **Python 3** with **matplotlib** and **numpy**.  
-Produces: `output/joint_heatmap_final.png` showing both species in a single visualization.
+The first command produces a joint two-colour heatmap (`output/joint_heatmap_final.png`). The second generates individual species heatmaps and a convergence plot via gnuplot.
 
-**Alternative: Gnuplot individual plots**
-```bash
-python3 scripts/plot_density.py output/
-```
+## Output
 
-Requires **gnuplot ≥ 5.0** with png output support.  
-Produces individual PNGs for each species and convergence plot.
-
-⚠️ **Known Issues with gnuplot:**
-- **Snap library conflict:** `symbol lookup error: libpthread.so.0` — use Python visualization instead
-- **No interactive terminals:** If your gnuplot lacks x11/wxt/qt, the interactive browser (`density_browser.gp`) won't work
-
-> **Recommended:** Always use `plot_joint_heatmap.py` — it's more reliable and produces better visualizations.
-
-> **Note on physics:** At `temperature = 12.0` (default in some configs) the system is in the
-> high-temperature disordered phase, so the converged density is nearly uniform.
-> Structured (cluster/lamellar) phases emerge at lower temperatures. For structure formation,
-> use `T = 2.0` and adjust the mixing coefficients `xi1=0.05`/`xi2=0.05` for stability.
-> See [docs/BUG_REPORT.md](docs/BUG_REPORT.md) for details.
-
-## Output files
-
-After running a simulation, the `output/` directory contains:
+The `output/` directory contains the following files after a simulation:
 
 | File | Description |
 |------|-------------|
-| `parameters.cfg` | **Snapshot of all simulation parameters** used in the run (grid, physics, solver settings, Yukawa coefficients) |
-| `convergence.dat` | L2 error vs iteration number (2 columns: iter, error) |
-| `density_species1_final.dat` | Converged density profile for species 1 (3 columns: x, y, ρ₁) |
-| `density_species2_final.dat` | Converged density profile for species 2 (3 columns: x, y, ρ₂) |
-| `data/density_species{1,2}_iter_NNNNNN.dat` | Intermediate snapshots saved every `save_every` iterations |
-
-The `parameters.cfg` file is automatically created at the start of each simulation and stores all configuration values for reproducibility. The interactive browser (`density_browser_merged.gp`) reads this file and displays parameters overlaid on the visualization.
-
-> Full instructions: [docs/BUILD.md](docs/BUILD.md)
+| `parameters.cfg` | Snapshot of all simulation parameters used in the run |
+| `convergence.dat` | L2 error per iteration (columns: iteration, error) |
+| `density_species1_final.dat` | Converged density profile for species 1 (columns: x, y, rho) |
+| `density_species2_final.dat` | Converged density profile for species 2 (columns: x, y, rho) |
+| `data/density_species{1,2}_iter_NNNNNN.dat` | Intermediate snapshots at intervals defined by `save_every` |
 
 ## Configuration
 
-The simulation is controlled via `.cfg` files. Key sections:
+Simulations are controlled through `.cfg` files in INI format. The main sections are:
 
-| Section | Parameters | Description |
-|---------|-----------|-------------|
-| `[grid]` | `nx`, `ny`, `Lx`, `Ly`, `dx`, `dy` | Computational grid size and physical domain |
+| Section | Key Parameters | Description |
+|---------|---------------|-------------|
+| `[grid]` | `nx`, `ny`, `Lx`, `Ly`, `dx`, `dy` | Computational grid dimensions and physical domain size |
 | `[physics]` | `temperature`, `rho1`, `rho2`, `cutoff_radius` | Thermodynamic state and interaction cutoff |
-| `[interaction]` | `A_ij_m`, `a_ij_m` (i,j∈{1,2}, m∈{1,2,3}) | 3-Yukawa amplitude and decay-rate matrices |
-| `[solver]` | `max_iterations`, `tolerance`, `xi1`, `xi2` | Picard iteration control |
-| `[output]` | `output_dir`, `save_every` | Output file settings |
+| `[interaction]` | `A_ij_m`, `a_ij_m` | 3-Yukawa amplitude and decay-rate coefficient matrices |
+| `[solver]` | `max_iterations`, `tolerance`, `xi1`, `xi2` | Picard iteration parameters |
+| `[output]` | `output_dir`, `save_every` | Output directory and snapshot frequency |
 
-## Roadmap
+See `configs/default.cfg` for a reference configuration.
 
-- [x] Project structure and headers
-- [x] Config file parser (all 3-Yukawa parameters)
-- [x] Grid initialisation (cell-centred, periodic)
-- [x] 3-Yukawa potential evaluation (CPU)
-- [x] DFT solver — Picard iteration (CPU, O(N²) convolution)
-- [x] Intermediate and final density output (ASCII, gnuplot-compatible)
-- [x] Convergence logging
-- [x] Python visualisation script (side-by-side colour maps + convergence curve)
-- [ ] Validation tests with known analytical limits
-- [ ] CUDA port of the convolution kernel
-- [ ] Performance benchmarking: CPU vs GPU
-- [ ] Output & plotting
-- [ ] CUDA port of solver kernels
-- [ ] CPU vs GPU benchmarking
+## Development Roadmap
+
+### Completed
+
+- Project structure and header interfaces
+- Configuration file parser (all 3-Yukawa parameters)
+- Grid initialisation (cell-centred, periodic and walled boundaries)
+- 3-Yukawa potential evaluation (CPU)
+- DFT solver with Picard iteration (CPU, O(N^2) convolution)
+- Density output (ASCII, gnuplot-compatible format)
+- Convergence logging
+- Python and gnuplot visualisation scripts
+
+### Planned
+
+- CUDA port of the convolution kernel and solver
+- CPU vs GPU performance benchmarking
+- Validation tests against known analytical limits

@@ -1,8 +1,8 @@
-# Mathematical Explanation of `solver_cpu.c` Computations
+# Mathematical Reference for `solver_cpu.c`
 
-All steps follow the actual execution order of `solver_run_binary`.
-Each section references the slide it maps to and explains how the code
-and the slide formula are equivalent.
+This document provides a step-by-step mathematical derivation of each computation
+performed by `solver_run_binary`, following the actual execution order of the code.
+Each section maps a code block to the corresponding formula from the lecture slides.
 
 > **Slides referenced below** (by their exact heading as printed on the slide):
 > - *"Triple Yukawa pair potential"*
@@ -114,8 +114,8 @@ $$\texttt{U11}[d_{iy} N_x + d_{ix}] = U_{11}(r), \quad
   \texttt{U22}[\cdots] = U_{22}(r)$$
 
 **Slide connection:** the slide table gives numeric $A_{ij}^{(m)}$ and $\alpha_{ij}^{(m)}$ for pairs 11, 12, 22.
-`U12` is reused for both $\Phi_{12}$ and $\Phi_{21}$ because $U_{12}(r) = U_{21}(r)$ (symmetric potential).
-Old names `V00`, `V01`, `V11` are renamed to `U11`, `U12`, `U22` to match the slide notation exactly.
+The table `U12` serves for both $\Phi_{12}$ and $\Phi_{21}$ because $U_{12}(r) = U_{21}(r)$ (symmetric potential).
+The naming convention `U11`, `U12`, `U22` follows the slide notation directly.
 
 ---
 
@@ -159,8 +159,7 @@ $$\Phi_{22,b} = \rho_{2,b} \int d\mathbf{r}'\, U_{22}(|\mathbf{r}-\mathbf{r}'|)
 
 **Slide connection:** the slide shows $\Phi_{ij,b}$ as continuous integrals over $\mathbf{r}'$.
 The code's `sum_Uij * dA` is the direct O($N$) discrete approximation.
-Old code combined these into two scalars `phi1_bulk` and `phi2_bulk`; the refactored code
-names all four separately (`Phi11b`, `Phi12b`, `Phi21b`, `Phi22b`) to match the slide directly.
+All four bulk fields (`Phi11b`, `Phi12b`, `Phi21b`, `Phi22b`) are stored separately to match the slide notation.
 
 ---
 
@@ -353,8 +352,7 @@ $$\Phi_{ij}(\mathbf{r}) \;\leftarrow\; dA \cdot \Phi_{ij}(\mathbf{r})$$
 
 **Slide connection:** the slide writes $\Phi_{ij}(x_i,y_j) = \Delta x \Delta y [\sum_{m,n}\cdots]$.
 Factoring $dA$ out and applying it in one O($N$) pass is numerically equivalent.
-Old code had two combined arrays `phi1 = Phi11+Phi12` and `phi2 = Phi21+Phi22`;
-the refactored code stores all four separately, each named to match exactly one slide formula.
+All four field components are stored separately, each corresponding to exactly one slide formula.
 
 ---
 
@@ -392,10 +390,8 @@ $$K_2[\rho_2^{(t)}](\mathbf{r}) = \rho_{2,b}\,\exp\!\Big[-\beta\Big(\Phi_{21}(\m
 - `K1`, `K2` — new candidate densities for the Picard step
 
 **Slide connection:** the slide writes exactly $\rho_{i,b}\exp[-\beta(\Phi_{ia}+\Phi_{ib}-\Phi_{ia,b}-\Phi_{ib,b})]$.
-The old function `update_density` combined the two $\Phi$ components into a single `phi`
-array and had $\beta$ baked in; the refactored `compute_K` receives the two components
-explicitly and multiplies by `beta` here, making the formula a direct transcription of
-the slide. The array `K1`/`K2` name maps to $K_1[\cdot]$/$K_2[\cdot]$ from the slide.
+The function `compute_K` receives the two field components explicitly and multiplies by `beta`,
+making the formula a direct transcription of the slide. The arrays `K1`/`K2` correspond to $K_1[\cdot]$/$K_2[\cdot]$.
 
 ---
 
@@ -472,10 +468,8 @@ $$\rho_2^{(t+1)}(\mathbf{r}) = \xi_2 \cdot K_2[\rho_2^{(t)}](\mathbf{r}) + (1 - 
 - $\xi_i \in (0,1]$ — Picard mixing parameter (slide table: $\xi_1 = \xi_2 = 0.2$)
 
 **Slide connection:** `vec_add_scaled(a, alpha, b, beta_arg, c, n)` computes
-`c[k] = alpha*a[k] + beta_arg*b[k]`.  With `a = rho1^(t)` and `b = K1`, this maps
+`c[k] = alpha*a[k] + beta_arg*b[k]`. With `a = rho1^(t)` and `b = K1`, this maps
 directly to the slide formula $\xi_1 K_1 + (1-\xi_1)\rho_1^{(t)}$.
-Old code used `rho1_new` for the $K$ arrays; renaming to `K1`/`K2` makes the Picard step
-read exactly like the slide.
 
 ---
 

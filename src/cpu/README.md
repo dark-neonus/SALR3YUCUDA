@@ -1,7 +1,6 @@
 # src/cpu/
 
-CPU (pure C) implementations of the physics modules.
-These are the reference implementations that will later be ported to CUDA.
+CPU (pure C) reference implementations of the physics modules. These serve as the baseline that will be ported to CUDA for GPU acceleration.
 
 ---
 
@@ -9,58 +8,36 @@ These are the reference implementations that will later be ported to CUDA.
 
 Evaluates the 3-Yukawa pair potential:
 
-$$U_{ij}(r) = \sum_{m=0}^{2} A_{ij}^{(m)} \frac{e^{-\alpha_{ij}^{(m)} r}}{r}$$
+$$U_{ij}(r) = \sum_{m=1}^{3} A_{ij}^{(m)} \frac{e^{-\alpha_{ij}^{(m)} r}}{r}$$
 
-Returns 0 for $r \le 0$ or $r > r_c$ so that the cutoff is respected
-without branching inside the solver's inner loop.
+Returns 0 for $r \le 0$ or $r > r_c$ (cutoff radius).
 
-**Key function**
-
-`potential_u(i, j, r, p)` \u2014 species pair $(i, j) \in \{0,1\}^2$, distance $r$.
+Principal function: `potential_u(i, j, r, p)` for species pair $(i, j) \in \{0,1\}^2$ at distance $r$.
 
 ---
 
 ## solver_cpu.c
 
-Picard iteration for the 2-component mean-field DFT equation:
+Picard iteration for the 2-component mean-field DFT equations. The solver computes interaction fields $\Phi_{ij}(\mathbf{r})$ via O(N^2) discrete convolution and updates density profiles according to the Euler-Lagrange operator with chemical-potential renormalisation for mass conservation.
 
-$$\rho_i(\mathbf{r}) = \rho_{i,0} \cdot
-  \frac{N \exp(-\beta\,\varphi_i(\mathbf{r}))}{\sum_{\mathbf{r}'} \exp(-\beta\,\varphi_i(\mathbf{r}'))}
-$$
+Algorithm outline:
 
-where the interaction field is the 2-D discrete convolution:
+1. Precompute potential tables U11, U12, U22 indexed by circular grid offset (O(N), executed once).
+2. For each Picard iteration:
+   - Compute interaction fields $\Phi_{ij}$ via 2D convolution (O(N^2)).
+   - Evaluate the Euler-Lagrange operator $K_i[\rho]$.
+   - Renormalise to conserve mean density.
+   - Apply Picard mixing: $\rho_i^{(t+1)} = \xi_i K_i + (1 - \xi_i) \rho_i^{(t)}$.
+   - Enforce boundary conditions (periodic, W2, or W4).
+   - Apply anti-checkerboard smoothing (5-point Laplacian, epsilon = 0.01).
+   - Check convergence via per-point L2 norm.
+3. Write convergence log and intermediate snapshots.
 
-$$\varphi_i[i_x, i_y] = \Delta A \sum_{j}\sum_{j_x, j_y}
-  V_{ij}[(i_x - j_x)\bmod n_x,\;(i_y - j_y)\bmod n_y]\,\rho_j[j_x, j_y]$$
+The O(N^2) convolution is kept in direct-sum form to provide a clear baseline for comparison with the planned CUDA implementation.
 
-**Algorithm overview**
+Principal function: `solver_run_binary(rho1, rho2, cfg)` -- returns 0 (converged), 1 (iteration limit), or -1 (allocation error).
 
-1. **Precompute potential tables** `V00`, `V01`, `V11` \u2014 one call per pair
-   ($O(N)$ floating-point operations, done once before the loop).  Because
-   the potential only depends on the separation $r$, the table is indexed
-   by the circular offset $(d_{ix},\, d_{iy})$ with minimum-image distances.
-
-2. **Picard loop** (up to `max_iterations` steps):
-   - `compute_fields` \u2014 fills `phi1` and `phi2` via $O(N^2)$ convolution.
-     The inner x-loop is split at `jx` to replace modulo arithmetic with
-     two contiguous range operations, enabling auto-vectorisation.
-   - `update_density` \u2014 applies the mean-field equation with a min-shift
-     for numerical stability, then rescales to conserve the average density.
-   - Picard mixing: $\rho \leftarrow (1-\xi)\rho_{\rm old} + \xi\rho_{\rm new}$.
-   - Convergence check: per-grid-point L2 norm of $(\rho_{\rm new} - \rho_{\rm old})$.
-   - Logs error to `convergence.dat`; saves snapshots every `save_every` steps.
-
-**Performance note**
-
-The $O(N^2)$ convolution is intentionally kept simple to make the
-comparison with the CUDA implementation instructive.  For $N = 6400$
-(80\xd780 grid) and typical convergence at a few hundred iterations,
-runtime is on the order of minutes on a modern desktop.
-
-**Key function**
-
-`solver_run_binary(rho1, rho2, cfg)` \u2014 runs the full solver in-place;
-returns 0 (converged), 1 (iteration limit), or -1 (allocation error).
+See `MATH.md` in this directory for a detailed mathematical derivation mapping each code section to the corresponding equations.
 
 ---
 
@@ -71,10 +48,9 @@ Element-wise operations on double-precision flat arrays:
 | Function | Operation |
 |---|---|
 | `vec_add(a, b, c, n)` | $c_i = a_i + b_i$ |
-| `vec_scale(a, s, c, n)` | $c_i = s\,a_i$ |
+| `vec_scale(a, s, c, n)` | $c_i = s \cdot a_i$ |
 | `vec_dot(a, b, n)` | $\sum_i a_i b_i$ |
 | `vec_norm(a, n)` | $\sqrt{\sum_i a_i^2}$ |
-| `vec_add_scaled(a, s_a, b, s_b, c, n)` | $c_i = s_a a_i + s_b b_i$ |
+| `vec_add_scaled(a, s_a, b, s_b, c, n)` | $c_i = s_a \cdot a_i + s_b \cdot b_i$ |
 
-All functions are O(n) and branchless; the loops are written to allow
-auto-vectorisation with `-O2` or higher.
+All functions are O(n) and branchless, written to permit auto-vectorisation at `-O2` or higher.
