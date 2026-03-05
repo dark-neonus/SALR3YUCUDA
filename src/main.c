@@ -83,20 +83,19 @@ int main(int argc, char **argv) {
         const int nx = cfg.grid.nx;
         const int ny = cfg.grid.ny;
         
-        srand((unsigned int)67);  /* Random seed based on time */
+        srand((unsigned int)67);
         
         for (int iy = 0; iy < ny; ++iy) {
             for (int ix = 0; ix < nx; ++ix) {
                 int idx = iy * nx + ix;
                 
-                /* Uniform random perturbations around bulk density: ±10% */
                 double noise1 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
                 double noise2 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
                 
                 r1[idx] = cfg.rho1 * (1.0 + noise1);
                 r2[idx] = cfg.rho2 * (1.0 + noise2);
                 
-                /* Ensure positive density */
+                // Ensure positive density
                 if (r1[idx] < 1e-6) r1[idx] = 1e-6;
                 if (r2[idx] < 1e-6) r2[idx] = 1e-6;
             }
