@@ -38,13 +38,13 @@ static int ensure_dir(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    setbuf(stdout, NULL);  /* unbuffered output for real-time monitoring */
+    setbuf(stdout, NULL);
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <config_file>\n", argv[0]);
         return 1;
     }
 
-    /* ── Load configuration ─────────────────────────────────────────────── */
+    /* Load config */
     SimConfig cfg;
     if (config_load(argv[1], &cfg) != 0) {
         fprintf(stderr, "Error: failed to load config '%s'\n", argv[1]);
@@ -52,11 +52,11 @@ int main(int argc, char **argv) {
     }
     config_print(&cfg);
 
-    /* ── Prepare output directory ───────────────────────────────────────── */
+    /* Create output directory */
     if (ensure_dir(cfg.output_dir) != 0)
         return 1;
 
-    /* ── Build coordinate arrays ────────────────────────────────────────── */
+    /* Build coordinate arrays */
     double *xs = grid_create_x(&cfg.grid);
     double *ys = grid_create_y(&cfg.grid);
     if (!xs || !ys) {
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* ── Allocate and initialise density arrays ─────────────────────────── */
+    /* Allocate density arrays */
     size_t N   = (size_t)grid_total_points(&cfg.grid);
     double *r1 = malloc(N * sizeof(double));
     double *r2 = malloc(N * sizeof(double));
@@ -102,17 +102,13 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* ── Run Picard solver ──────────────────────────────────────────────── */
+    /* Run Picard solver */
     printf("\nStarting Picard iteration  (tol=%.2e, max_iter=%d)\n\n",
            cfg.solver.tolerance, cfg.solver.max_iterations);
 
     int status = solver_run_binary(r1, r2, &cfg);
 
-    /* ── Save final profiles ────────────────────────────────────────────── */
-    /* Note: solver_run_binary() already saves final profiles to output/data/
-     * via save_final(). This additional save to output/ (root) is kept for
-     * backward compatibility with scripts that expect files there.
-     */
+    /* Save final profiles */
     char path[512];
 
     snprintf(path, sizeof(path), "%s/density_species1_final.dat",

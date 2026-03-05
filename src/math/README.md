@@ -1,3 +1,3 @@
 # src/math/
 
-Specialised math routines (future). Basic ops are in cpu/math_utils_cpu.c.
+Planned location for specialised mathematical routines (e.g., FFT-based convolution). Basic element-wise vector operations are currently implemented in `cpu/math_utils_cpu.c`.

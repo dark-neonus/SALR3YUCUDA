@@ -12,7 +12,7 @@
 
 #include <stddef.h>
 
-/* ── Solver parameters ──────────────────────────────────────────────────── */
+/* Solver parameters */
 typedef struct {
     int    max_iterations;   /* maximum Picard iterations                   */
     double tolerance;        /* convergence accuracy epsilon                */
