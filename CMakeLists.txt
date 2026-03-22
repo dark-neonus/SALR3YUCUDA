@@ -45,23 +45,23 @@ add_executable(salr_dft
 )
 target_link_libraries(salr_dft m OpenMP::OpenMP_C)
 
-# CUDA DFT solver (not yet implemented - enable when solver_cuda.cu is complete)
-# if(HAVE_CUDA)
-#     add_executable(salr_dft_cuda
-#         src/main.c
-#         src/core/config.c
-#         src/core/grid.c
-#         src/cuda/solver_cuda.cu
-#         src/cuda/math_utils_cuda.cu
-#         src/cuda/potential_cuda.cu
-#         src/utils/io.c
-#     )
-#     set_target_properties(salr_dft_cuda PROPERTIES
-#         CUDA_SEPARABLE_COMPILATION ON
-#         LINKER_LANGUAGE CUDA
-#     )
-#     target_link_libraries(salr_dft_cuda m)
-# endif()
+# CUDA DFT solver
+if(HAVE_CUDA)
+    add_executable(salr_dft_cuda
+        src/main.c
+        src/core/config.c
+        src/core/grid.c
+        src/cuda/solver_cuda.cu
+        src/cuda/math_utils_cuda.cu
+        src/cuda/potential_cuda.cu
+        src/utils/io.c
+    )
+    set_target_properties(salr_dft_cuda PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        LINKER_LANGUAGE CUDA
+    )
+    target_link_libraries(salr_dft_cuda m)
+endif()
 
 # Tests (CPU)
 add_executable(test_solver

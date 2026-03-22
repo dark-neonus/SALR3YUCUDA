@@ -124,6 +124,8 @@ int io_save_parameters(const char *filename, const struct SimConfig *config) {
     fprintf(f, "tolerance = %.10g\n", config->solver.tolerance);
     fprintf(f, "xi1 = %.10g\n", config->solver.xi1);
     fprintf(f, "xi2 = %.10g\n", config->solver.xi2);
+    fprintf(f, "error_change_threshold = %.10g\n", config->solver.error_change_threshold);
+    fprintf(f, "xi_damping_factor = %.10g\n", config->solver.xi_damping_factor);
     fprintf(f, "\n");
     
     /* Output parameters */

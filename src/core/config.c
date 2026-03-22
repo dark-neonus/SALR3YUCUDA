@@ -32,10 +32,12 @@ int config_load(const char *filename, SimConfig *config) {
     memset(config, 0, sizeof(*config));
     snprintf(config->output_dir, sizeof(config->output_dir), "output/");
     config->save_every = 100;
-    config->solver.max_iterations = 10000;
-    config->solver.tolerance      = 1e-8;
-    config->solver.xi1            = 0.2;
-    config->solver.xi2            = 0.2;
+    config->solver.max_iterations         = 10000;
+    config->solver.tolerance              = 1e-8;
+    config->solver.xi1                    = 0.2;
+    config->solver.xi2                    = 0.2;
+    config->solver.error_change_threshold = 1e-10;
+    config->solver.xi_damping_factor      = 0.9;
 
     char line[512];
     char section[64] = "";
@@ -109,10 +111,12 @@ int config_load(const char *filename, SimConfig *config) {
         }
         /* [solver] section */
         else if (strcmp(section, "solver") == 0) {
-            if      (strcmp(key, "max_iterations") == 0) config->solver.max_iterations = atoi(val);
-            else if (strcmp(key, "tolerance")      == 0) config->solver.tolerance      = atof(val);
-            else if (strcmp(key, "xi1")            == 0) config->solver.xi1            = atof(val);
-            else if (strcmp(key, "xi2")            == 0) config->solver.xi2            = atof(val);
+            if      (strcmp(key, "max_iterations")         == 0) config->solver.max_iterations         = atoi(val);
+            else if (strcmp(key, "tolerance")              == 0) config->solver.tolerance              = atof(val);
+            else if (strcmp(key, "xi1")                    == 0) config->solver.xi1                    = atof(val);
+            else if (strcmp(key, "xi2")                    == 0) config->solver.xi2                    = atof(val);
+            else if (strcmp(key, "error_change_threshold") == 0) config->solver.error_change_threshold = atof(val);
+            else if (strcmp(key, "xi_damping_factor")      == 0) config->solver.xi_damping_factor      = atof(val);
         }
         /* [output] section */
         else if (strcmp(section, "output") == 0) {
@@ -154,6 +158,8 @@ void config_print(const SimConfig *config) {
     printf("  max_iter=%d  tol=%.2e  xi1=%.4g  xi2=%.4g\n",
            config->solver.max_iterations, config->solver.tolerance,
            config->solver.xi1, config->solver.xi2);
+    printf("  error_change_threshold=%.2e  xi_damping_factor=%.4g\n",
+           config->solver.error_change_threshold, config->solver.xi_damping_factor);
     printf("[output]\n");
     printf("  output_dir=%s  save_every=%d\n",
            config->output_dir, config->save_every);

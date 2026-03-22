@@ -356,11 +356,13 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
     snprintf(param_path, sizeof(param_path), "%s/parameters.cfg", cfg->output_dir);
     io_save_parameters(param_path, cfg);
 
-    const int    max_iter = cfg->solver.max_iterations;
-    const double tol      = cfg->solver.tolerance;
-    const double xi1      = cfg->solver.xi1;
-    const double xi2      = cfg->solver.xi2;
-    const int    save_ev  = cfg->save_every;
+    const int    max_iter   = cfg->solver.max_iterations;
+    const double tol        = cfg->solver.tolerance;
+    double       xi1        = cfg->solver.xi1;
+    double       xi2        = cfg->solver.xi2;
+    const int    save_ev    = cfg->save_every;
+    const double err_thresh = cfg->solver.error_change_threshold;
+    const double xi_damp    = cfg->solver.xi_damping_factor;
 
     /* Enforce boundary mask */
     apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
@@ -369,6 +371,7 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
     save_snapshot(rho1, rho2, xs, ys, Nx, Ny, 0, cfg->output_dir);
 
     int converged = 0;
+    double prev_err = -1.0;  /* previous iteration error (negative = uninitialized) */
 
     for (int iter = 0; iter < max_iter; ++iter) {
 
@@ -423,6 +426,17 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         double e2  = xi2 * solver_l2_diff_interior(K2, rho2, Nx, Ny, mode);
         if (e2 > err) err = e2;
 
+        /* Step 3b: Adaptive damping - reduce mixing when error change is small */
+        double err_delta = (prev_err >= 0.0) ? fabs(prev_err - err) : -1.0;
+        if (prev_err >= 0.0) {
+            double err_change = err_delta;
+            if (err_change < err_thresh && err_change > 0.0) {
+                xi1 *= xi_damp;
+                xi2 *= xi_damp;
+            }
+        }
+        prev_err = err;
+
         /* Step 4: Picard mixing */
         vec_add_scaled(rho1, 1.0 - xi1, K1, xi1, rho1, N);
         vec_add_scaled(rho2, 1.0 - xi2, K2, xi2, rho2, N);
@@ -449,8 +463,8 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
                 if (rho2[k] > max2) max2 = rho2[k];
                 sum2 += rho2[k];
             }
-            printf("  iter %6d   err=%.3e   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
-                   iter + 1, err, min1, sum1/(double)N, max1,
+            printf("  iter %6d   err=%.3e   err_delta=%.3e   xi1=%.4f   xi2=%.4f   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
+                   iter + 1, err, err_delta, xi1, xi2, min1, sum1/(double)N, max1,
                    min2, sum2/(double)N, max2);
             save_snapshot(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
         }

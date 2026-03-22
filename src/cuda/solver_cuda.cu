@@ -326,10 +326,12 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     const double rho2_b = cfg->rho2;
     const int    max_it = cfg->solver.max_iterations;
     const double tol    = cfg->solver.tolerance;
-    const double xi1    = cfg->solver.xi1;
-    const double xi2    = cfg->solver.xi2;
+    double       xi1    = cfg->solver.xi1;
+    double       xi2    = cfg->solver.xi2;
     const int    sav_ev = cfg->save_every;
     const double rc     = cfg->potential.cutoff_radius;
+    const double err_thresh = cfg->solver.error_change_threshold;
+    const double xi_damp    = cfg->solver.xi_damping_factor;
 
     /* Print GPU info */
     {
@@ -432,6 +434,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
 
     /* PICARD ITERATION LOOP */
     int converged = 0;
+    double prev_err = -1.0;  /* previous iteration error (negative = uninitialized) */
 
     for (int iter = 0; iter < max_it; ++iter) {
 
@@ -469,6 +472,17 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
             err = (e1 > e2) ? e1 : e2;
         }
 
+        /* 3b. Adaptive damping - reduce mixing when error change is small */
+        double err_delta = (prev_err >= 0.0) ? fabs(prev_err - err) : -1.0;
+        if (prev_err >= 0.0) {
+            double err_change = err_delta;
+            if (err_change < err_thresh && err_change > 0.0) {
+                xi1 *= xi_damp;
+                xi2 *= xi_damp;
+            }
+        }
+        prev_err = err;
+
         /* 4. Picard mixing: ρ ← (1−ξ)ρ + ξK */
         k_mix<<<g, BLK>>>(d_rho1, d_K1, xi1, N);
         k_mix<<<g, BLK>>>(d_rho2, d_K2, xi2, N);
@@ -497,8 +511,8 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
                 if (rho1[k] < mn1) mn1 = rho1[k]; if (rho1[k] > mx1) mx1 = rho1[k]; sm1 += rho1[k];
                 if (rho2[k] < mn2) mn2 = rho2[k]; if (rho2[k] > mx2) mx2 = rho2[k]; sm2 += rho2[k];
             }
-            printf("  iter %6d   err=%.3e   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
-                   iter + 1, err, mn1, sm1 / (double)N, mx1,
+            printf("  iter %6d   err=%.3e   err_delta=%.3e   xi1=%.4f   xi2=%.4f   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
+                   iter + 1, err, err_delta, xi1, xi2, mn1, sm1 / (double)N, mx1,
                    mn2, sm2 / (double)N, mx2);
             save_snap(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
         }

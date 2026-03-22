@@ -14,10 +14,12 @@
 
 /* Solver parameters */
 typedef struct {
-    int    max_iterations;   /* maximum Picard iterations                   */
-    double tolerance;        /* convergence accuracy epsilon                */
-    double xi1;              /* Picard mixing coefficient for species 1     */
-    double xi2;              /* Picard mixing coefficient for species 2     */
+    int    max_iterations;         /* maximum Picard iterations                   */
+    double tolerance;              /* convergence accuracy epsilon                */
+    double xi1;                    /* Picard mixing coefficient for species 1     */
+    double xi2;                    /* Picard mixing coefficient for species 2     */
+    double error_change_threshold; /* threshold for error change to trigger damping */
+    double xi_damping_factor;      /* factor to multiply xi by when error stabilizes */
 } SolverParams;
 
 /* Forward declaration — full SimConfig defined in config.h */
