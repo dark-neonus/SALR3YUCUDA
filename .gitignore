@@ -64,3 +64,5 @@ docs/report/SALR3YUCUDA/*.log
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+database/

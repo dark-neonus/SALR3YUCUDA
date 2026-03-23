@@ -100,3 +100,79 @@ if(HAVE_CUDA)
     )
     target_link_libraries(benchmark_integral_cuda m)
 endif()
+
+# =============================================================================
+# Database Engine (HDF5 + SQLite support)
+# =============================================================================
+
+option(ENABLE_DB_ENGINE "Build with HDF5/SQLite database engine" ON)
+
+if(ENABLE_DB_ENGINE)
+    find_package(HDF5 COMPONENTS C)
+    find_package(SQLite3)
+
+    if(HDF5_FOUND AND SQLite3_FOUND)
+        message(STATUS "Database engine enabled (HDF5 + SQLite found)")
+        set(HAVE_DB_ENGINE TRUE)
+
+        # Build the database engine library
+        add_subdirectory(database_engine)
+
+        # Create executables with database support
+        add_executable(salr_dft_db
+            src/main.c
+            src/core/config.c
+            src/core/grid.c
+            src/cpu/potential_cpu.c
+            src/cpu/solver_cpu.c
+            src/cpu/math_utils_cpu.c
+            src/utils/io.c
+        )
+        target_compile_definitions(salr_dft_db PRIVATE USE_DB_ENGINE)
+        target_include_directories(salr_dft_db PRIVATE
+            ${CMAKE_SOURCE_DIR}/database_engine/include
+            ${HDF5_INCLUDE_DIRS}
+        )
+        target_link_libraries(salr_dft_db
+            m OpenMP::OpenMP_C
+            salr_db_engine
+        )
+
+        if(HAVE_CUDA)
+            add_executable(salr_dft_cuda_db
+                src/main.c
+                src/core/config.c
+                src/core/grid.c
+                src/cuda/solver_cuda.cu
+                src/cuda/math_utils_cuda.cu
+                src/cuda/potential_cuda.cu
+                src/utils/io.c
+            )
+            target_compile_definitions(salr_dft_cuda_db PRIVATE USE_DB_ENGINE)
+            target_include_directories(salr_dft_cuda_db PRIVATE
+                ${CMAKE_SOURCE_DIR}/database_engine/include
+                ${HDF5_INCLUDE_DIRS}
+            )
+            set_target_properties(salr_dft_cuda_db PROPERTIES
+                CUDA_SEPARABLE_COMPILATION ON
+                LINKER_LANGUAGE CUDA
+            )
+            target_link_libraries(salr_dft_cuda_db
+                m
+                salr_db_engine
+            )
+        endif()
+    else()
+        message(STATUS "Database engine disabled (HDF5 or SQLite not found)")
+        if(NOT HDF5_FOUND)
+            message(STATUS "  - HDF5 not found. Install with: sudo apt install libhdf5-dev")
+        endif()
+        if(NOT SQLite3_FOUND)
+            message(STATUS "  - SQLite3 not found. Install with: sudo apt install libsqlite3-dev")
+        endif()
+        set(HAVE_DB_ENGINE FALSE)
+    endif()
+else()
+    message(STATUS "Database engine disabled by user")
+    set(HAVE_DB_ENGINE FALSE)
+endif()

@@ -560,3 +560,284 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
 
     return converged ? 0 : 1;
 }
+
+#ifdef USE_DB_ENGINE
+extern "C" {
+#include "db_engine.h"
+}
+
+/* ── Solver with HDF5 database support ───────────────────────────────────── */
+
+extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
+                                    struct DbRun *run, int start_iter)
+{
+    /* Grid/physics constants */
+    const int    Nx   = cfg->grid.nx;
+    const int    Ny   = cfg->grid.ny;
+    const double dx   = cfg->grid.dx;
+    const double dy   = cfg->grid.dy;
+    const int    N    = Nx * Ny;
+    const double dA   = dx * dy;
+    const double beta = 1.0 / cfg->temperature;
+    const int    mode = cfg->boundary_mode;
+    const int    wx   = (mode == BC_W2 || mode == BC_W4);
+    const int    wy   = (mode == BC_W4);
+    const int    interior = count_interior(Nx, Ny, mode);
+    const size_t sz   = (size_t)N * sizeof(double);
+
+    const double rho1_b = cfg->rho1;
+    const double rho2_b = cfg->rho2;
+    const int    max_it = cfg->solver.max_iterations;
+    const double tol    = cfg->solver.tolerance;
+    double       xi1    = cfg->solver.xi1;
+    double       xi2    = cfg->solver.xi2;
+    const int    sav_ev = cfg->save_every;
+    const double rc     = cfg->potential.cutoff_radius;
+    const double err_thresh = cfg->solver.error_change_threshold;
+    const double xi_damp    = cfg->solver.xi_damping_factor;
+
+    /* Print GPU info */
+    {
+        int dev; cudaDeviceProp prop;
+        CUDA_CHECK(cudaGetDevice(&dev));
+        CUDA_CHECK(cudaGetDeviceProperties(&prop, dev));
+        printf("  CUDA device: %s  (SM %d.%d, %.0f MHz, %zu MB)\n",
+               prop.name, prop.major, prop.minor,
+               prop.clockRate / 1000.0, prop.totalGlobalMem >> 20);
+        printf("  Grid: %dx%d = %d points, %d interior\n", Nx, Ny, N, interior);
+        if (start_iter > 0) {
+            printf("  Resuming from iteration %d\n", start_iter);
+        }
+    }
+
+    /* Device allocations */
+    double *d_rho1, *d_rho2;
+    double *d_U11,  *d_U12,  *d_U22;
+    double *d_P11,  *d_P12,  *d_P21,  *d_P22;
+    double *d_K1,   *d_K2,   *d_tmp,  *d_part;
+    int    nb_r = nblk_red(N);
+
+    CUDA_CHECK(cudaMalloc(&d_rho1, sz));
+    CUDA_CHECK(cudaMalloc(&d_rho2, sz));
+    CUDA_CHECK(cudaMalloc(&d_U11,  sz));
+    CUDA_CHECK(cudaMalloc(&d_U12,  sz));
+    CUDA_CHECK(cudaMalloc(&d_U22,  sz));
+    CUDA_CHECK(cudaMalloc(&d_P11,  sz));
+    CUDA_CHECK(cudaMalloc(&d_P12,  sz));
+    CUDA_CHECK(cudaMalloc(&d_P21,  sz));
+    CUDA_CHECK(cudaMalloc(&d_P22,  sz));
+    CUDA_CHECK(cudaMalloc(&d_K1,   sz));
+    CUDA_CHECK(cudaMalloc(&d_K2,   sz));
+    CUDA_CHECK(cudaMalloc(&d_tmp,  sz));
+    CUDA_CHECK(cudaMalloc(&d_part, nb_r * sizeof(double)));
+
+    double *h_part = (double *)malloc(nb_r * sizeof(double));
+
+    /* Yukawa parameters on device */
+    double *d_A11, *d_a11, *d_A12, *d_a12, *d_A22, *d_a22;
+    size_t ysz = YUKAWA_TERMS * sizeof(double);
+    CUDA_CHECK(cudaMalloc(&d_A11, ysz));  CUDA_CHECK(cudaMalloc(&d_a11, ysz));
+    CUDA_CHECK(cudaMalloc(&d_A12, ysz));  CUDA_CHECK(cudaMalloc(&d_a12, ysz));
+    CUDA_CHECK(cudaMalloc(&d_A22, ysz));  CUDA_CHECK(cudaMalloc(&d_a22, ysz));
+
+    CUDA_CHECK(cudaMemcpy(d_A11, cfg->potential.A[0][0],     ysz, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_a11, cfg->potential.alpha[0][0], ysz, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_A12, cfg->potential.A[0][1],     ysz, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_a12, cfg->potential.alpha[0][1], ysz, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_A22, cfg->potential.A[1][1],     ysz, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_a22, cfg->potential.alpha[1][1], ysz, cudaMemcpyHostToDevice));
+
+    /* Build potential tables on GPU */
+    int g = nblk(N);
+    k_build_pot<<<g, BLK>>>(d_U11, d_A11, d_a11, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U12, d_A12, d_a12, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U22, d_A22, d_a22, rc, Nx, Ny, dx, dy, wx, wy);
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    /* Bulk Phi fields */
+    double sU11 = gpu_sum(d_U11, d_part, h_part, N);
+    double sU12 = gpu_sum(d_U12, d_part, h_part, N);
+    double sU22 = gpu_sum(d_U22, d_part, h_part, N);
+
+    const double Phi11b = dA * rho1_b * sU11;
+    const double Phi12b = dA * rho2_b * sU12;
+    const double Phi21b = dA * rho1_b * sU12;
+    const double Phi22b = dA * rho2_b * sU22;
+
+    /* Coordinate arrays for file output */
+    double *xs = (double *)malloc(Nx * sizeof(double));
+    double *ys = (double *)malloc(Ny * sizeof(double));
+    for (int i = 0; i < Nx; ++i) xs[i] = (i + 0.5) * dx;
+    for (int j = 0; j < Ny; ++j) ys[j] = (j + 0.5) * dy;
+
+    /* Convergence log (append mode for resumption) */
+    char log_path[512];
+    snprintf(log_path, sizeof(log_path), "%s/convergence.dat", cfg->output_dir);
+    if (start_iter == 0) {
+        FILE *lf = fopen(log_path, "w");
+        if (lf) { fprintf(lf, "# iter  L2_error\n"); fclose(lf); }
+    }
+
+    /* Save simulation parameters */
+    char param_path[512];
+    snprintf(param_path, sizeof(param_path), "%s/parameters.cfg", cfg->output_dir);
+    io_save_parameters(param_path, cfg);
+
+    /* Transfer initial densities to GPU */
+    CUDA_CHECK(cudaMemcpy(d_rho1, rho1, sz, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_rho2, rho2, sz, cudaMemcpyHostToDevice));
+    k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    /* Copy back for initial snapshot */
+    CUDA_CHECK(cudaMemcpy(rho1, d_rho1, sz, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(rho2, d_rho2, sz, cudaMemcpyDeviceToHost));
+
+    /* Save initial snapshot if new run */
+    if (start_iter == 0) {
+        db_snapshot_save(run, rho1, rho2, 0, 1.0, -1.0, cfg);
+        save_snap(rho1, rho2, xs, ys, Nx, Ny, 0, cfg->output_dir);
+    }
+
+    /* CUDA timing events */
+    cudaEvent_t t_start, t_stop;
+    CUDA_CHECK(cudaEventCreate(&t_start));
+    CUDA_CHECK(cudaEventCreate(&t_stop));
+    CUDA_CHECK(cudaEventRecord(t_start));
+
+    /* PICARD ITERATION LOOP */
+    int converged = 0;
+    double prev_err = -1.0;
+    double final_err = 0.0;
+
+    for (int iter = start_iter; iter < max_it; ++iter) {
+
+        /* 1. Phi convolution on GPU */
+        k_compute_Phi<<<g, BLK>>>(d_P11, d_P12, d_P21, d_P22,
+            d_rho1, d_rho2, d_U11, d_U12, d_U22,
+            Nx, Ny, dA, wx, wy);
+
+        /* 2. Euler-Lagrange operator K_i */
+        k_compute_K<<<g, BLK>>>(d_P11, d_P12, Phi11b, Phi12b, rho1_b, beta, d_K1, N);
+        k_compute_K<<<g, BLK>>>(d_P21, d_P22, Phi21b, Phi22b, rho2_b, beta, d_K2, N);
+
+        /* 2b. Mass renormalization */
+        {
+            double s1 = gpu_sum_interior(d_K1, d_part, h_part, Nx, Ny, mode);
+            double s2 = gpu_sum_interior(d_K2, d_part, h_part, Nx, Ny, mode);
+            if (interior > 0 && s1 > 1e-12 && s2 > 1e-12) {
+                k_scale_interior<<<g, BLK>>>(
+                    d_K1, (double)interior * rho1_b / s1, Nx, Ny, mode);
+                k_scale_interior<<<g, BLK>>>(
+                    d_K2, (double)interior * rho2_b / s2, Nx, Ny, mode);
+            }
+        }
+
+        /* 3. Convergence check */
+        double err;
+        {
+            k_sq_diff<<<g, BLK>>>(d_K1, d_rho1, d_tmp, Nx, Ny, mode);
+            double s1 = gpu_sum(d_tmp, d_part, h_part, N);
+            k_sq_diff<<<g, BLK>>>(d_K2, d_rho2, d_tmp, Nx, Ny, mode);
+            double s2 = gpu_sum(d_tmp, d_part, h_part, N);
+            double ic = (interior > 0) ? (double)interior : 1.0;
+            double e1 = xi1 * sqrt(s1 / ic);
+            double e2 = xi2 * sqrt(s2 / ic);
+            err = (e1 > e2) ? e1 : e2;
+        }
+        final_err = err;
+
+        /* 3b. Adaptive damping */
+        double err_delta = (prev_err >= 0.0) ? fabs(prev_err - err) : -1.0;
+        if (prev_err >= 0.0) {
+            double err_change = err_delta;
+            if (err_change < err_thresh && err_change > 0.0) {
+                xi1 *= xi_damp;
+                xi2 *= xi_damp;
+            }
+        }
+        prev_err = err;
+
+        /* 4. Picard mixing */
+        k_mix<<<g, BLK>>>(d_rho1, d_K1, xi1, N);
+        k_mix<<<g, BLK>>>(d_rho2, d_K2, xi2, N);
+
+        /* 5. Boundary -> smooth -> boundary */
+        k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
+
+        k_smooth<<<g, BLK>>>(d_rho1, d_tmp, Nx, Ny, mode, SMOOTH_EPS);
+        CUDA_CHECK(cudaMemcpy(d_rho1, d_tmp, sz, cudaMemcpyDeviceToDevice));
+        k_smooth<<<g, BLK>>>(d_rho2, d_tmp, Nx, Ny, mode, SMOOTH_EPS);
+        CUDA_CHECK(cudaMemcpy(d_rho2, d_tmp, sz, cudaMemcpyDeviceToDevice));
+
+        k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
+        CUDA_CHECK(cudaDeviceSynchronize());
+
+        /* 6. Logging and periodic snapshots */
+        io_log_convergence(log_path, iter, err);
+
+        if ((iter + 1) % sav_ev == 0) {
+            CUDA_CHECK(cudaMemcpy(rho1, d_rho1, sz, cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaMemcpy(rho2, d_rho2, sz, cudaMemcpyDeviceToHost));
+
+            double mn1 = rho1[0], mx1 = rho1[0], sm1 = 0;
+            double mn2 = rho2[0], mx2 = rho2[0], sm2 = 0;
+            for (int k = 0; k < N; ++k) {
+                if (rho1[k] < mn1) mn1 = rho1[k]; if (rho1[k] > mx1) mx1 = rho1[k]; sm1 += rho1[k];
+                if (rho2[k] < mn2) mn2 = rho2[k]; if (rho2[k] > mx2) mx2 = rho2[k]; sm2 += rho2[k];
+            }
+            printf("  iter %6d   err=%.3e   err_delta=%.3e   xi1=%.4f   xi2=%.4f   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
+                   iter + 1, err, err_delta, xi1, xi2, mn1, sm1 / (double)N, mx1,
+                   mn2, sm2 / (double)N, mx2);
+
+            /* Save HDF5 snapshot */
+            db_snapshot_save(run, rho1, rho2, iter + 1, err, err_delta, cfg);
+            /* Also save ASCII */
+            save_snap(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
+        }
+
+        if (err < tol) {
+            CUDA_CHECK(cudaEventRecord(t_stop));
+            CUDA_CHECK(cudaEventSynchronize(t_stop));
+            float ms; CUDA_CHECK(cudaEventElapsedTime(&ms, t_start, t_stop));
+            printf("  Converged at iteration %d  (err=%.3e < %.3e, %.2f s GPU)\n",
+                   iter + 1, err, tol, ms / 1000.0f);
+
+            CUDA_CHECK(cudaMemcpy(rho1, d_rho1, sz, cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaMemcpy(rho2, d_rho2, sz, cudaMemcpyDeviceToHost));
+            db_snapshot_save(run, rho1, rho2, iter + 1, err, err_delta, cfg);
+            save_snap(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
+            save_final(rho1, rho2, xs, ys, Nx, Ny, cfg->output_dir);
+            converged = 1;
+            break;
+        }
+    }
+
+    if (!converged) {
+        CUDA_CHECK(cudaEventRecord(t_stop));
+        CUDA_CHECK(cudaEventSynchronize(t_stop));
+        float ms; CUDA_CHECK(cudaEventElapsedTime(&ms, t_start, t_stop));
+        fprintf(stderr, "Warning: did not converge in %d iterations (%.2f s GPU).\n",
+                max_it, ms / 1000.0f);
+
+        CUDA_CHECK(cudaMemcpy(rho1, d_rho1, sz, cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(rho2, d_rho2, sz, cudaMemcpyDeviceToHost));
+        save_final(rho1, rho2, xs, ys, Nx, Ny, cfg->output_dir);
+    }
+
+    /* Cleanup */
+    CUDA_CHECK(cudaEventDestroy(t_start));
+    CUDA_CHECK(cudaEventDestroy(t_stop));
+
+    cudaFree(d_rho1); cudaFree(d_rho2);
+    cudaFree(d_U11);  cudaFree(d_U12);  cudaFree(d_U22);
+    cudaFree(d_P11);  cudaFree(d_P12);  cudaFree(d_P21);  cudaFree(d_P22);
+    cudaFree(d_K1);   cudaFree(d_K2);   cudaFree(d_tmp);  cudaFree(d_part);
+    cudaFree(d_A11);  cudaFree(d_a11);
+    cudaFree(d_A12);  cudaFree(d_a12);
+    cudaFree(d_A22);  cudaFree(d_a22);
+    free(h_part); free(xs); free(ys);
+
+    return converged ? 0 : 1;
+}
+#endif /* USE_DB_ENGINE */

@@ -25,6 +25,11 @@ typedef struct {
 /* Forward declaration — full SimConfig defined in config.h */
 struct SimConfig;
 
+#ifdef USE_DB_ENGINE
+/* Forward declaration for database run handle */
+struct DbRun;
+#endif
+
 /*
  * solver_run_binary - Picard iteration for a 2-component SALR mixture.
  *
@@ -36,6 +41,20 @@ struct SimConfig;
  * cfg->output_dir according to cfg->save_every.
  */
 int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg);
+
+#ifdef USE_DB_ENGINE
+/*
+ * solver_run_binary_db - Picard iteration with HDF5 snapshot support.
+ *
+ * Same as solver_run_binary, but saves snapshots to HDF5 files via
+ * the database engine. Supports resumption from a checkpoint.
+ *
+ * run: Database run handle for snapshot storage
+ * start_iter: Starting iteration (0 for new run, >0 for resume)
+ */
+int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
+                         struct DbRun *run, int start_iter);
+#endif
 
 /* Compute L2 norm of (a - b) over n elements */
 double solver_l2_diff(const double *a, const double *b, size_t n);

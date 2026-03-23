@@ -493,3 +493,244 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
 
     return converged ? 0 : 1;
 }
+
+#ifdef USE_DB_ENGINE
+#include "db_engine.h"
+
+/* ── Solver with HDF5 database support ───────────────────────────────────── */
+
+int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
+                         struct DbRun *run, int start_iter) {
+    /*
+     * Same as solver_run_binary, but with HDF5 snapshot support
+     * and ability to resume from a checkpoint.
+     */
+    const int    Nx   = cfg->grid.nx;
+    const int    Ny   = cfg->grid.ny;
+    const double dx   = cfg->grid.dx;
+    const double dy   = cfg->grid.dy;
+    const size_t N    = (size_t)(Nx * Ny);
+    const double dA   = dx * dy;
+    const double beta = 1.0 / cfg->temperature;
+    const int    mode = cfg->boundary_mode;
+
+    const int wall_x = (mode == BC_W2 || mode == BC_W4);
+    const int wall_y = (mode == BC_W4);
+
+    /* Potential tables U_ij(r) */
+    double *U11   = malloc(N * sizeof(double));
+    double *U12   = malloc(N * sizeof(double));
+    double *U22   = malloc(N * sizeof(double));
+
+    /* Interaction field arrays */
+    double *Phi11 = malloc(N * sizeof(double));
+    double *Phi12 = malloc(N * sizeof(double));
+    double *Phi21 = malloc(N * sizeof(double));
+    double *Phi22 = malloc(N * sizeof(double));
+
+    /* Euler-Lagrange operator results */
+    double *K1    = malloc(N * sizeof(double));
+    double *K2    = malloc(N * sizeof(double));
+
+    /* Cell-centre coordinates for output */
+    double *xs    = malloc((size_t)Nx * sizeof(double));
+    double *ys    = malloc((size_t)Ny * sizeof(double));
+
+    if (!U11 || !U12 || !U22 ||
+        !Phi11 || !Phi12 || !Phi21 || !Phi22 ||
+        !K1 || !K2 || !xs || !ys) {
+        free(U11); free(U12); free(U22);
+        free(Phi11); free(Phi12); free(Phi21); free(Phi22);
+        free(K1); free(K2); free(xs); free(ys);
+        return -1;
+    }
+
+    /* Build potential tables */
+    build_potential_table(U11, 0, 0, &cfg->potential, Nx, Ny, dx, dy, wall_x, wall_y);
+    build_potential_table(U12, 0, 1, &cfg->potential, Nx, Ny, dx, dy, wall_x, wall_y);
+    build_potential_table(U22, 1, 1, &cfg->potential, Nx, Ny, dx, dy, wall_x, wall_y);
+
+    /* Compute bulk interaction fields */
+    const double rho1_b = cfg->rho1;
+    const double rho2_b = cfg->rho2;
+
+    double sum_U11 = 0.0, sum_U12 = 0.0, sum_U22 = 0.0;
+    #pragma omp parallel for reduction(+:sum_U11, sum_U12, sum_U22)
+    for (size_t k = 0; k < N; ++k) {
+        sum_U11 += U11[k];
+        sum_U12 += U12[k];
+        sum_U22 += U22[k];
+    }
+
+    const double Phi11b = dA * rho1_b * sum_U11;
+    const double Phi12b = dA * rho2_b * sum_U12;
+    const double Phi21b = dA * rho1_b * sum_U12;
+    const double Phi22b = dA * rho2_b * sum_U22;
+
+    /* Cell-centre coordinates */
+    for (int i = 0; i < Nx; ++i) xs[i] = (i + 0.5) * dx;
+    for (int j = 0; j < Ny; ++j) ys[j] = (j + 0.5) * dy;
+
+    /* Convergence log (append mode for resumption) */
+    char log_path[512];
+    snprintf(log_path, sizeof(log_path), "%s/convergence.dat", cfg->output_dir);
+    if (start_iter == 0) {
+        FILE *lf = fopen(log_path, "w");
+        if (lf) { fprintf(lf, "# iter  L2_error\n"); fclose(lf); }
+    }
+
+    /* Save simulation parameters */
+    char param_path[512];
+    snprintf(param_path, sizeof(param_path), "%s/parameters.cfg", cfg->output_dir);
+    io_save_parameters(param_path, cfg);
+
+    const int    max_iter   = cfg->solver.max_iterations;
+    const double tol        = cfg->solver.tolerance;
+    double       xi1        = cfg->solver.xi1;
+    double       xi2        = cfg->solver.xi2;
+    const int    save_ev    = cfg->save_every;
+    const double err_thresh = cfg->solver.error_change_threshold;
+    const double xi_damp    = cfg->solver.xi_damping_factor;
+
+    /* Enforce boundary mask */
+    apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
+
+    /* Save initial snapshot (HDF5) if new run */
+    if (start_iter == 0) {
+        db_snapshot_save(run, rho1, rho2, 0, 1.0, -1.0, cfg);
+        /* Also save ASCII for compatibility */
+        save_snapshot(rho1, rho2, xs, ys, Nx, Ny, 0, cfg->output_dir);
+    }
+
+    int converged = 0;
+    double prev_err = -1.0;
+    double final_err = 0.0;
+
+    for (int iter = start_iter; iter < max_iter; ++iter) {
+
+        /* Step 1: Compute interaction fields */
+        compute_Phi(Phi11, Phi12, Phi21, Phi22,
+                    rho1, rho2, U11, U12, U22,
+                    Nx, Ny, dA, wall_x, wall_y);
+
+        /* Step 2: Apply Euler-Lagrange operator */
+        compute_K(Phi11, Phi12, Phi11b, Phi12b, rho1_b, beta, K1, N);
+        compute_K(Phi21, Phi22, Phi21b, Phi22b, rho2_b, beta, K2, N);
+
+        /* Step 2b: Mass renormalisation */
+        {
+            int x_start = (mode == BC_W2 || mode == BC_W4) ? 1 : 0;
+            int x_end   = (mode == BC_W2 || mode == BC_W4) ? Nx - 1 : Nx;
+            int y_start = (mode == BC_W4) ? 1 : 0;
+            int y_end   = (mode == BC_W4) ? Ny - 1 : Ny;
+
+            double s1 = 0.0, s2 = 0.0;
+            size_t interior_count = 0;
+
+            #pragma omp parallel for collapse(2) reduction(+:s1, s2, interior_count)
+            for (int iy = y_start; iy < y_end; ++iy) {
+                for (int ix = x_start; ix < x_end; ++ix) {
+                    size_t k = (size_t)iy * Nx + ix;
+                    s1 += K1[k];
+                    s2 += K2[k];
+                    interior_count++;
+                }
+            }
+
+            if (interior_count > 0 && s1 > 1e-12 && s2 > 1e-12) {
+                double target1 = (double)interior_count * rho1_b;
+                double target2 = (double)interior_count * rho2_b;
+                double norm1 = target1 / s1;
+                double norm2 = target2 / s2;
+
+                #pragma omp parallel for collapse(2)
+                for (int iy = y_start; iy < y_end; ++iy) {
+                    for (int ix = x_start; ix < x_end; ++ix) {
+                        size_t k = (size_t)iy * Nx + ix;
+                        K1[k] *= norm1;
+                        K2[k] *= norm2;
+                    }
+                }
+            }
+        }
+
+        /* Step 3: Convergence check */
+        double err = xi1 * solver_l2_diff_interior(K1, rho1, Nx, Ny, mode);
+        double e2  = xi2 * solver_l2_diff_interior(K2, rho2, Nx, Ny, mode);
+        if (e2 > err) err = e2;
+        final_err = err;
+
+        /* Step 3b: Adaptive damping */
+        double err_delta = (prev_err >= 0.0) ? fabs(prev_err - err) : -1.0;
+        if (prev_err >= 0.0) {
+            double err_change = err_delta;
+            if (err_change < err_thresh && err_change > 0.0) {
+                xi1 *= xi_damp;
+                xi2 *= xi_damp;
+            }
+        }
+        prev_err = err;
+
+        /* Step 4: Picard mixing */
+        vec_add_scaled(rho1, 1.0 - xi1, K1, xi1, rho1, N);
+        vec_add_scaled(rho2, 1.0 - xi2, K2, xi2, rho2, N);
+
+        /* Step 5: Apply boundary conditions */
+        apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
+
+        /* Step 5b: Anti-checkerboard smoothing */
+        smooth_density(rho1, Nx, Ny, mode);
+        smooth_density(rho2, Nx, Ny, mode);
+        apply_boundary_mask(rho1, rho2, Nx, Ny, mode);
+
+        /* Step 6: Log and snapshot */
+        io_log_convergence(log_path, iter, err);
+
+        if ((iter + 1) % save_ev == 0) {
+            double min1 = rho1[0], max1 = rho1[0], sum1 = 0;
+            double min2 = rho2[0], max2 = rho2[0], sum2 = 0;
+            for (size_t k = 0; k < N; ++k) {
+                if (rho1[k] < min1) min1 = rho1[k];
+                if (rho1[k] > max1) max1 = rho1[k];
+                sum1 += rho1[k];
+                if (rho2[k] < min2) min2 = rho2[k];
+                if (rho2[k] > max2) max2 = rho2[k];
+                sum2 += rho2[k];
+            }
+            printf("  iter %6d   err=%.3e   err_delta=%.3e   xi1=%.4f   xi2=%.4f   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
+                   iter + 1, err, err_delta, xi1, xi2, min1, sum1/(double)N, max1,
+                   min2, sum2/(double)N, max2);
+
+            /* Save HDF5 snapshot */
+            db_snapshot_save(run, rho1, rho2, iter + 1, err, err_delta, cfg);
+
+            /* Also save ASCII for compatibility */
+            save_snapshot(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
+        }
+
+        if (err < tol) {
+            printf("  Converged at iteration %d  (err = %.3e < %.3e)\n",
+                   iter + 1, err, tol);
+            db_snapshot_save(run, rho1, rho2, iter + 1, err, err_delta, cfg);
+            save_snapshot(rho1, rho2, xs, ys, Nx, Ny, iter + 1, cfg->output_dir);
+            save_final(rho1, rho2, xs, ys, Nx, Ny, cfg->output_dir);
+            converged = 1;
+            break;
+        }
+    }
+
+    if (!converged) {
+        fprintf(stderr,
+                "Warning: solver did not converge in %d iterations.\n",
+                max_iter);
+        save_final(rho1, rho2, xs, ys, Nx, Ny, cfg->output_dir);
+    }
+
+    free(U11); free(U12); free(U22);
+    free(Phi11); free(Phi12); free(Phi21); free(Phi22);
+    free(K1); free(K2);
+    free(xs); free(ys);
+
+    return converged ? 0 : 1;
+}
+#endif /* USE_DB_ENGINE */
