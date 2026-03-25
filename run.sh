@@ -136,20 +136,20 @@ do_list() {
         return 0
     fi
 
-    # Check for registry.db
-    if [[ ! -f "$DATABASE_DIR/registry.db" ]]; then
-        _yellow "No registry.db found in $DATABASE_DIR"
+    # Check for sessions.db
+    if [[ ! -f "$DATABASE_DIR/sessions.db" ]]; then
+        _yellow "No sessions.db found in $DATABASE_DIR"
         echo "No runs yet. Run a simulation first with: $0 sim"
         return 0
     fi
 
     # Use sqlite3 to list runs
     if command -v sqlite3 &>/dev/null; then
-        _cyan "Runs in $DATABASE_DIR/registry.db:"
+        _cyan "Runs in $DATABASE_DIR/sessions.db:"
         echo ""
-        sqlite3 -header -column "$DATABASE_DIR/registry.db" \
+        sqlite3 -header -column "$DATABASE_DIR/sessions.db" \
             "SELECT run_id, nickname, created_at, temperature, rho1_bulk, rho2_bulk, snapshot_count, converged
-             FROM runs ORDER BY created_at DESC LIMIT 20;"
+             FROM sessions ORDER BY created_at DESC LIMIT 20;"
     else
         _yellow "sqlite3 not found. Install with: sudo apt install sqlite3"
         echo ""

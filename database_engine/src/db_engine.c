@@ -50,7 +50,7 @@ DbError db_init(const char *data_root) {
 
     /* Initialize registry */
     char db_path[DB_PATH_MAX];
-    if (db_path_join(db_path, sizeof(db_path), g_data_root, "runs.db") != 0) {
+    if (db_path_join(db_path, sizeof(db_path), g_data_root, "sessions.db") != 0) {
         return DB_ERR_IO;
     }
 

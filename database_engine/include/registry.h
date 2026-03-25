@@ -37,8 +37,11 @@ typedef struct {
     double rho2_bulk;
     int    nx;
     int    ny;
+    double dx;
+    double dy;
     char   boundary_mode[8];
     char   config_hash[16];
+    char   source[64];         /* Source session ID (empty if from scratch) */
     int    snapshot_count;
     double final_error;
     int    converged;

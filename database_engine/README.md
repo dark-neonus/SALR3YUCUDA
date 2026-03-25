@@ -20,13 +20,13 @@ This documentation uses precise terminology to avoid confusion:
 |------|------------|---------|
 | **Snapshot** | A single HDF5 file containing density fields and metadata at one iteration | `snapshot_001000.h5` |
 | **Session** | A directory containing all snapshots from one simulation run | `session_20260323_143052_a1b2c3d4/` |
-| **Registry** | SQLite database indexing all sessions | `runs.db` |
+| **Registry** | SQLite database indexing all sessions | `sessions.db` |
 
 ### Visual Structure
 
 ```
 database/                           # Data root directory
-├── runs.db                         # Registry (SQLite)
+├── sessions.db                     # Registry (SQLite)
 └── session_20260323_143052_a1b2c3d4/   # Session directory
     ├── snapshot_000000.h5          # Initial snapshot
     ├── snapshot_001000.h5          # Snapshot at iteration 1000
@@ -327,7 +327,10 @@ class RunSummary:
     rho2_bulk: float
     nx: int
     ny: int
+    dx: float
+    dy: float
     boundary_mode: str
+    source: Optional[str]
     snapshot_count: int
     final_error: Optional[float]
     converged: bool
@@ -402,7 +405,7 @@ with h5py.File("snapshot_001000.h5", "r") as f:
 ## SQLite Registry Schema
 
 ```sql
-CREATE TABLE runs (
+CREATE TABLE sessions (
     run_id         TEXT PRIMARY KEY,        -- e.g., "session_20260323_143052_a1b2c3d4"
     nickname       TEXT DEFAULT NULL,       -- User-defined name
     created_at     TEXT NOT NULL,           -- ISO8601 timestamp
@@ -411,15 +414,18 @@ CREATE TABLE runs (
     rho2_bulk      REAL NOT NULL,           -- Bulk density species 2
     nx             INTEGER NOT NULL,        -- Grid size X
     ny             INTEGER NOT NULL,        -- Grid size Y
+    dx             REAL NOT NULL,           -- Grid spacing X
+    dy             REAL NOT NULL,           -- Grid spacing Y
     boundary_mode  TEXT NOT NULL,           -- "PBC", "W2", "W4"
     config_hash    TEXT NOT NULL,           -- Config fingerprint
+    source         TEXT DEFAULT NULL,       -- Source session ID (if branched from another)
     snapshot_count INTEGER DEFAULT 0,       -- Number of snapshots
     final_error    REAL DEFAULT NULL,       -- Final convergence error
     converged      INTEGER DEFAULT 0        -- 1 if converged
 );
 
-CREATE INDEX idx_runs_temp ON runs(temperature);
-CREATE INDEX idx_runs_rho ON runs(rho1_bulk, rho2_bulk);
+CREATE INDEX idx_sessions_temp ON sessions(temperature);
+CREATE INDEX idx_sessions_rho ON sessions(rho1_bulk, rho2_bulk);
 ```
 
 ---

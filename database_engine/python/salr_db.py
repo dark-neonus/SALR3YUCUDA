@@ -50,7 +50,10 @@ class RunSummary:
     rho2_bulk: float
     nx: int
     ny: int
+    dx: float
+    dy: float
     boundary_mode: str
+    source: Optional[str]
     snapshot_count: int
     final_error: Optional[float]
     converged: bool
@@ -275,7 +278,7 @@ class Database:
             data_root: Path to the data directory
         """
         self.data_root = Path(data_root)
-        self.db_path = self.data_root / "runs.db"
+        self.db_path = self.data_root / "sessions.db"
 
         # Create data directory if needed
         if not self.data_root.exists():
@@ -316,9 +319,9 @@ class Database:
 
         query = """
             SELECT run_id, nickname, created_at, temperature, rho1_bulk,
-                   rho2_bulk, nx, ny, boundary_mode, snapshot_count,
-                   final_error, converged
-            FROM runs WHERE 1=1
+                   rho2_bulk, nx, ny, dx, dy, boundary_mode, source,
+                   snapshot_count, final_error, converged
+            FROM sessions WHERE 1=1
         """
         params = []
 
@@ -356,7 +359,10 @@ class Database:
                 rho2_bulk=row["rho2_bulk"],
                 nx=row["nx"],
                 ny=row["ny"],
+                dx=row["dx"],
+                dy=row["dy"],
                 boundary_mode=row["boundary_mode"],
+                source=row["source"],
                 snapshot_count=row["snapshot_count"] or 0,
                 final_error=row["final_error"],
                 converged=bool(row["converged"])
@@ -393,7 +399,7 @@ class Database:
         """
         conn = self._get_connection()
         conn.execute(
-            "UPDATE runs SET nickname = ? WHERE run_id = ?",
+            "UPDATE sessions SET nickname = ? WHERE run_id = ?",
             (nickname, run_id)
         )
         conn.commit()
@@ -421,7 +427,7 @@ class Database:
                 shutil.rmtree(run_path)
 
             # Delete registry entry
-            conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+            conn.execute("DELETE FROM sessions WHERE run_id = ?", (run_id,))
             conn.commit()
         except Exception as e:
             conn.rollback()
@@ -443,9 +449,9 @@ class Database:
 
         cursor = conn.execute("""
             SELECT run_id, nickname, created_at, temperature, rho1_bulk,
-                   rho2_bulk, nx, ny, boundary_mode, snapshot_count,
-                   final_error, converged
-            FROM runs WHERE run_id = ?
+                   rho2_bulk, nx, ny, dx, dy, boundary_mode, source,
+                   snapshot_count, final_error, converged
+            FROM sessions WHERE run_id = ?
         """, (run_id,))
 
         row = cursor.fetchone()
@@ -463,7 +469,10 @@ class Database:
             rho2_bulk=row["rho2_bulk"],
             nx=row["nx"],
             ny=row["ny"],
+            dx=row["dx"],
+            dy=row["dy"],
             boundary_mode=row["boundary_mode"],
+            source=row["source"],
             snapshot_count=row["snapshot_count"] or 0,
             final_error=row["final_error"],
             converged=bool(row["converged"])

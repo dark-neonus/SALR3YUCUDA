@@ -14,7 +14,7 @@ static sqlite3 *g_db = NULL;
 
 /* SQL statements */
 static const char *SQL_CREATE_TABLE =
-    "CREATE TABLE IF NOT EXISTS runs ("
+    "CREATE TABLE IF NOT EXISTS sessions ("
     "    run_id         TEXT PRIMARY KEY,"
     "    nickname       TEXT DEFAULT NULL,"
     "    created_at     TEXT NOT NULL,"
@@ -23,21 +23,24 @@ static const char *SQL_CREATE_TABLE =
     "    rho2_bulk      REAL NOT NULL,"
     "    nx             INTEGER NOT NULL,"
     "    ny             INTEGER NOT NULL,"
+    "    dx             REAL NOT NULL,"
+    "    dy             REAL NOT NULL,"
     "    boundary_mode  TEXT NOT NULL,"
     "    config_hash    TEXT NOT NULL,"
+    "    source         TEXT DEFAULT NULL,"
     "    snapshot_count INTEGER DEFAULT 0,"
     "    final_error    REAL DEFAULT NULL,"
     "    converged      INTEGER DEFAULT 0"
     ");";
 
 static const char *SQL_CREATE_INDEX_TEMP =
-    "CREATE INDEX IF NOT EXISTS idx_runs_temp ON runs(temperature);";
+    "CREATE INDEX IF NOT EXISTS idx_sessions_temp ON sessions(temperature);";
 
 static const char *SQL_CREATE_INDEX_RHO =
-    "CREATE INDEX IF NOT EXISTS idx_runs_rho ON runs(rho1_bulk, rho2_bulk);";
+    "CREATE INDEX IF NOT EXISTS idx_sessions_rho ON sessions(rho1_bulk, rho2_bulk);";
 
 static const char *SQL_CREATE_INDEX_CREATED =
-    "CREATE INDEX IF NOT EXISTS idx_runs_created ON runs(created_at);";
+    "CREATE INDEX IF NOT EXISTS idx_sessions_created ON sessions(created_at);";
 
 /*
  * Convert BoundaryMode to string
@@ -141,9 +144,9 @@ RegistryError registry_insert_run(const char *run_id,
     }
 
     const char *sql =
-        "INSERT INTO runs (run_id, created_at, temperature, rho1_bulk, rho2_bulk, "
-        "nx, ny, boundary_mode, config_hash) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        "INSERT INTO sessions (run_id, created_at, temperature, rho1_bulk, rho2_bulk, "
+        "nx, ny, dx, dy, boundary_mode, config_hash) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
@@ -160,8 +163,10 @@ RegistryError registry_insert_run(const char *run_id,
     sqlite3_bind_double(stmt, 5, cfg->rho2);
     sqlite3_bind_int(stmt, 6, cfg->grid.nx);
     sqlite3_bind_int(stmt, 7, cfg->grid.ny);
-    sqlite3_bind_text(stmt, 8, boundary_mode_to_str(cfg->boundary_mode), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 9, config_hash ? config_hash : "", -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 8, cfg->grid.dx);
+    sqlite3_bind_double(stmt, 9, cfg->grid.dy);
+    sqlite3_bind_text(stmt, 10, boundary_mode_to_str(cfg->boundary_mode), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 11, config_hash ? config_hash : "", -1, SQLITE_STATIC);
 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -182,7 +187,7 @@ RegistryError registry_update_status(const char *run_id,
     if (!g_db || !run_id) return REG_ERR_OPEN;
 
     const char *sql =
-        "UPDATE runs SET snapshot_count = ?, final_error = ?, converged = ? "
+        "UPDATE sessions SET snapshot_count = ?, final_error = ?, converged = ? "
         "WHERE run_id = ?;";
 
     sqlite3_stmt *stmt;
@@ -203,7 +208,7 @@ RegistryError registry_update_status(const char *run_id,
 RegistryError registry_set_nickname(const char *run_id, const char *nickname) {
     if (!g_db || !run_id) return REG_ERR_OPEN;
 
-    const char *sql = "UPDATE runs SET nickname = ? WHERE run_id = ?;";
+    const char *sql = "UPDATE sessions SET nickname = ? WHERE run_id = ?;";
 
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
@@ -225,7 +230,7 @@ RegistryError registry_set_nickname(const char *run_id, const char *nickname) {
 RegistryError registry_delete_run(const char *run_id) {
     if (!g_db || !run_id) return REG_ERR_OPEN;
 
-    const char *sql = "DELETE FROM runs WHERE run_id = ?;";
+    const char *sql = "DELETE FROM sessions WHERE run_id = ?;";
 
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
@@ -242,7 +247,7 @@ RegistryError registry_delete_run(const char *run_id) {
 int registry_run_exists(const char *run_id) {
     if (!g_db || !run_id) return 0;
 
-    const char *sql = "SELECT 1 FROM runs WHERE run_id = ? LIMIT 1;";
+    const char *sql = "SELECT 1 FROM sessions WHERE run_id = ? LIMIT 1;";
 
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
@@ -283,18 +288,28 @@ static void fill_run_summary(sqlite3_stmt *stmt, RunSummary *run) {
     run->rho2_bulk = sqlite3_column_double(stmt, 5);
     run->nx = sqlite3_column_int(stmt, 6);
     run->ny = sqlite3_column_int(stmt, 7);
+    run->dx = sqlite3_column_double(stmt, 8);
+    run->dy = sqlite3_column_double(stmt, 9);
 
-    text = (const char *)sqlite3_column_text(stmt, 8);
+    text = (const char *)sqlite3_column_text(stmt, 10);
     strncpy(run->boundary_mode, text ? text : "PBC", sizeof(run->boundary_mode) - 1);
     run->boundary_mode[sizeof(run->boundary_mode) - 1] = '\0';
 
-    text = (const char *)sqlite3_column_text(stmt, 9);
+    text = (const char *)sqlite3_column_text(stmt, 11);
     strncpy(run->config_hash, text ? text : "", sizeof(run->config_hash) - 1);
     run->config_hash[sizeof(run->config_hash) - 1] = '\0';
 
-    run->snapshot_count = sqlite3_column_int(stmt, 10);
-    run->final_error = sqlite3_column_double(stmt, 11);
-    run->converged = sqlite3_column_int(stmt, 12);
+    text = (const char *)sqlite3_column_text(stmt, 12);
+    if (text) {
+        strncpy(run->source, text, sizeof(run->source) - 1);
+        run->source[sizeof(run->source) - 1] = '\0';
+    } else {
+        run->source[0] = '\0';
+    }
+
+    run->snapshot_count = sqlite3_column_int(stmt, 13);
+    run->final_error = sqlite3_column_double(stmt, 14);
+    run->converged = sqlite3_column_int(stmt, 15);
 }
 
 RegistryError registry_get_run(const char *run_id, RunSummary *run_out) {
@@ -302,8 +317,8 @@ RegistryError registry_get_run(const char *run_id, RunSummary *run_out) {
 
     const char *sql =
         "SELECT run_id, nickname, created_at, temperature, rho1_bulk, rho2_bulk, "
-        "nx, ny, boundary_mode, config_hash, snapshot_count, final_error, converged "
-        "FROM runs WHERE run_id = ?;";
+        "nx, ny, dx, dy, boundary_mode, config_hash, source, snapshot_count, final_error, converged "
+        "FROM sessions WHERE run_id = ?;";
 
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(g_db, sql, -1, &stmt, NULL);
@@ -337,8 +352,8 @@ RegistryError registry_query_runs(const RegistryFilter *filter,
 
     offset += snprintf(sql + offset, sizeof(sql) - offset,
         "SELECT run_id, nickname, created_at, temperature, rho1_bulk, rho2_bulk, "
-        "nx, ny, boundary_mode, config_hash, snapshot_count, final_error, converged "
-        "FROM runs WHERE 1=1");
+        "nx, ny, dx, dy, boundary_mode, config_hash, source, snapshot_count, final_error, converged "
+        "FROM sessions WHERE 1=1");
 
     if (filter) {
         if (filter->use_temp_filter) {

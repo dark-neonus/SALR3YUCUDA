@@ -72,8 +72,6 @@ int config_load(const char *filename, SimConfig *config) {
         if (strcmp(section, "grid") == 0) {
             if      (strcmp(key, "nx") == 0) config->grid.nx = atoi(val);
             else if (strcmp(key, "ny") == 0) config->grid.ny = atoi(val);
-            else if (strcmp(key, "Lx") == 0) config->grid.Lx = atof(val);
-            else if (strcmp(key, "Ly") == 0) config->grid.Ly = atof(val);
             else if (strcmp(key, "dx") == 0) config->grid.dx = atof(val);
             else if (strcmp(key, "dy") == 0) config->grid.dy = atof(val);
             else if (strcmp(key, "boundary_mode") == 0) {
@@ -125,6 +123,10 @@ int config_load(const char *filename, SimConfig *config) {
         }
     }
 
+    /* Derive Lx and Ly from grid spacing and node count */
+    config->grid.Lx = config->grid.dx * config->grid.nx;
+    config->grid.Ly = config->grid.dy * config->grid.ny;
+
     fclose(f);
     return 0;
 }
@@ -132,10 +134,11 @@ int config_load(const char *filename, SimConfig *config) {
 void config_print(const SimConfig *config) {
     printf("=== SimConfig ===\n");
     printf("[grid]\n");
-    printf("  nx=%d  ny=%d  Lx=%.4g  Ly=%.4g  dx=%.4g  dy=%.4g\n",
+    printf("  nx=%d  ny=%d  dx=%.4g  dy=%.4g\n",
            config->grid.nx, config->grid.ny,
-           config->grid.Lx, config->grid.Ly,
            config->grid.dx, config->grid.dy);
+    printf("  Lx=%.4g (derived: dx*nx)  Ly=%.4g (derived: dy*ny)\n",
+           config->grid.Lx, config->grid.Ly);
     const char *bc_names[] = {"PBC", "W2", "W4"};
     printf("  boundary_mode=%s\n", bc_names[config->boundary_mode]);
     printf("[physics]\n");

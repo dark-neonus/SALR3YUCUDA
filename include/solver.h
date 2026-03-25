@@ -51,9 +51,10 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg);
  *
  * run: Database run handle for snapshot storage
  * start_iter: Starting iteration (0 for new run, >0 for resume)
+ * final_error_out: Output parameter for the final convergence error (can be NULL)
  */
 int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
-                         struct DbRun *run, int start_iter);
+                         struct DbRun *run, int start_iter, double *final_error_out);
 #endif
 
 /* Compute L2 norm of (a - b) over n elements */

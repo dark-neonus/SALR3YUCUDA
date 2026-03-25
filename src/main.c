@@ -243,7 +243,8 @@ int main(int argc, char **argv) {
            cfg.solver.tolerance, cfg.solver.max_iterations);
 
 #ifdef USE_DB_ENGINE
-    int status = solver_run_binary_db(r1, r2, &cfg, run, start_iter);
+    double final_error = 0.0;
+    int status = solver_run_binary_db(r1, r2, &cfg, run, start_iter, &final_error);
 #else
     int status = solver_run_binary(r1, r2, &cfg);
 #endif
@@ -272,7 +273,7 @@ int main(int argc, char **argv) {
         free(iters);
 
         db_registry_update_status(db_run_get_id(run), snapshot_count,
-                                  0.0, /* TODO: get final error from solver */
+                                  final_error,
                                   (status == 0) ? 1 : 0);
 
         printf("Run completed: %s (%d snapshots)\n",

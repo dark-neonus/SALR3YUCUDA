@@ -569,7 +569,7 @@ extern "C" {
 /* ── Solver with HDF5 database support ───────────────────────────────────── */
 
 extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
-                                    struct DbRun *run, int start_iter)
+                                    struct DbRun *run, int start_iter, double *final_error_out)
 {
     /* Grid/physics constants */
     const int    Nx   = cfg->grid.nx;
@@ -837,6 +837,11 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     cudaFree(d_A12);  cudaFree(d_a12);
     cudaFree(d_A22);  cudaFree(d_a22);
     free(h_part); free(xs); free(ys);
+
+    /* Set output parameter for final error */
+    if (final_error_out) {
+        *final_error_out = final_err;
+    }
 
     return converged ? 0 : 1;
 }

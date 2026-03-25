@@ -31,7 +31,7 @@ def cmd_list(args):
             limit=args.limit
         )
     except FileNotFoundError:
-        print(f"Database not found at {args.data_root}/runs.db")
+        print(f"Database not found at {args.data_root}/sessions.db")
         return 1
 
     if not runs:
@@ -63,14 +63,16 @@ def cmd_info(args):
 
     print(f"Run ID:        {info.run_id}")
     print(f"Nickname:      {info.nickname or '(none)'}")
+    print(f"Source:        {info.source or '(from scratch)'}")
     print(f"Created:       {info.created_at}")
     print(f"Temperature:   {info.temperature}")
     print(f"rho1 (bulk):   {info.rho1_bulk}")
     print(f"rho2 (bulk):   {info.rho2_bulk}")
     print(f"Grid size:     {info.nx} x {info.ny}")
+    print(f"Grid spacing:  dx={info.dx}, dy={info.dy}")
     print(f"Boundary:      {info.boundary_mode}")
     print(f"Snapshots:     {info.snapshot_count}")
-    print(f"Final error:   {info.final_error if info.final_error else '(not set)'}")
+    print(f"Final error:   {info.final_error:.2e}" if info.final_error is not None else "Final error:   (not set)")
     print(f"Converged:     {'Yes' if info.converged else 'No'}")
 
     # List snapshots if run directory exists

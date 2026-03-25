@@ -9,10 +9,10 @@
 
 /* Grid parameters */
 typedef struct {
-    int    nx;       /* number of grid points along x   (Lx / dx)           */
-    int    ny;       /* number of grid points along y   (Ly / dy)           */
-    double Lx;       /* physical size of box along x                        */
-    double Ly;       /* physical size of box along y                        */
+    int    nx;       /* number of grid points along x                       */
+    int    ny;       /* number of grid points along y                       */
+    double Lx;       /* physical size of box along x (derived: Lx = dx*nx)  */
+    double Ly;       /* physical size of box along y (derived: Ly = dy*ny)  */
     double dx;       /* discretisation step along x                         */
     double dy;       /* discretisation step along y                         */
 } GridParams;

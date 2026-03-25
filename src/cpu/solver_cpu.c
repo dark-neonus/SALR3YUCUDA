@@ -500,7 +500,7 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
 /* ── Solver with HDF5 database support ───────────────────────────────────── */
 
 int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
-                         struct DbRun *run, int start_iter) {
+                         struct DbRun *run, int start_iter, double *final_error_out) {
     /*
      * Same as solver_run_binary, but with HDF5 snapshot support
      * and ability to resume from a checkpoint.
@@ -730,6 +730,11 @@ int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
     free(Phi11); free(Phi12); free(Phi21); free(Phi22);
     free(K1); free(K2);
     free(xs); free(ys);
+
+    /* Set output parameter for final error */
+    if (final_error_out) {
+        *final_error_out = final_err;
+    }
 
     return converged ? 0 : 1;
 }
