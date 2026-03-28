@@ -176,3 +176,18 @@ else()
     message(STATUS "Database engine disabled by user")
     set(HAVE_DB_ENGINE FALSE)
 endif()
+
+# =============================================================================
+# Qt Visualization GUI
+# =============================================================================
+
+option(BUILD_GUI "Build Qt visualization GUI" OFF)
+
+if(BUILD_GUI)
+    if(HAVE_DB_ENGINE)
+        add_subdirectory(visualization_gui)
+        message(STATUS "Qt Visualization GUI enabled")
+    else()
+        message(WARNING "BUILD_GUI requires database engine (ENABLE_DB_ENGINE=ON)")
+    endif()
+endif()
