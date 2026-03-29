@@ -118,13 +118,14 @@ void SnapshotBrowserWidget::loadThumbnailAsync(int iteration)
     QString cacheKey = QString("%1_%2").arg(runId).arg(iteration);
 
     // Use QtConcurrent to load in background
-    QFutureWatcher<QPixmap>* watcher = new QFutureWatcher<QPixmap>(this);
+    QFutureWatcher<QImage>* watcher = new QFutureWatcher<QImage>(this);
 
-    connect(watcher, &QFutureWatcher<QPixmap>::finished, this, [this, watcher, cacheKey, iteration]() {
-        QPixmap thumbnail = watcher->result();
+    connect(watcher, &QFutureWatcher<QImage>::finished, this, [this, watcher, cacheKey, iteration]() {
+        QImage resultImage = watcher->result();
         watcher->deleteLater();
 
-        if (!thumbnail.isNull()) {
+        if (!resultImage.isNull()) {
+            QPixmap thumbnail = QPixmap::fromImage(resultImage);
             thumbnailCache_[cacheKey] = thumbnail;
 
             // Update item if still visible
@@ -138,10 +139,10 @@ void SnapshotBrowserWidget::loadThumbnailAsync(int iteration)
         }
     });
 
-    QFuture<QPixmap> future = QtConcurrent::run([this, runId, iteration]() -> QPixmap {
+    QFuture<QImage> future = QtConcurrent::run([this, runId, iteration]() -> QImage {
         SnapshotData data = database_->loadSnapshot(runId, iteration);
         if (!data.isValid()) {
-            return QPixmap();
+            return QImage();
         }
         return generateThumbnail(data);
     });
@@ -149,10 +150,10 @@ void SnapshotBrowserWidget::loadThumbnailAsync(int iteration)
     watcher->setFuture(future);
 }
 
-QPixmap SnapshotBrowserWidget::generateThumbnail(const SnapshotData& data, int size)
+QImage SnapshotBrowserWidget::generateThumbnail(const SnapshotData& data, int size)
 {
     if (!data.isValid()) {
-        return QPixmap();
+        return QImage();
     }
 
     int nx = data.meta.nx;
@@ -186,8 +187,7 @@ QPixmap SnapshotBrowserWidget::generateThumbnail(const SnapshotData& data, int s
     }
 
     // Scale to thumbnail size
-    QPixmap pixmap = QPixmap::fromImage(image);
-    return pixmap.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return image.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
 void SnapshotBrowserWidget::onItemSelectionChanged()

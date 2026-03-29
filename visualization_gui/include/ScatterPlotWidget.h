@@ -26,11 +26,15 @@ public:
     void setSnapshotData(const SnapshotData& data);
     void setThreshold(double threshold);
     double threshold() const { return threshold_; }
+    
+    void setPointSize(float size);
+    float pointSize() const { return pointSize_; }
 
     void resetView();
 
 signals:
     void thresholdChanged(double threshold);
+    void pointSizeChanged(float size);
 
 protected:
     void initializeGL() override;
@@ -44,16 +48,23 @@ protected:
 private:
     void updateVertexData();
     void drawAxes();
+    void updateProjection();
 
     // Data
     SnapshotData currentData_;
     double threshold_ = 0.01;
+    float pointSize_ = 500.0f;  // Default point size
 
     // Camera
     float rotationX_ = 30.0f;
     float rotationY_ = -45.0f;
     float zoom_ = 1.0f;
     QPoint lastMousePos_;
+    
+    // Viewport
+    int width_ = 1;
+    int height_ = 1;
+    bool needsProjectionUpdate_ = true;
 
     // OpenGL objects
     QOpenGLShaderProgram* shaderProgram_ = nullptr;

@@ -41,7 +41,7 @@ private slots:
 private:
     void setupUi();
     void loadSnapshots();
-    QPixmap generateThumbnail(const SnapshotData& data, int size = 64);
+    QImage generateThumbnail(const SnapshotData& data, int size = 64);
     void loadThumbnailAsync(int iteration);
 
     DatabaseWrapper* database_;

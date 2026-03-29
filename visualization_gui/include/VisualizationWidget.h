@@ -27,6 +27,7 @@ public:
 
 private slots:
     void onThresholdChanged(int value);
+    void onPointSizeChanged(int value);
     void onColorModeChanged(int index);
     void onCursorPosition(double x, double y, double rho1, double rho2);
 
@@ -40,6 +41,8 @@ private:
     // Controls
     QSlider* thresholdSlider_ = nullptr;
     QLabel* thresholdLabel_ = nullptr;
+    QSlider* pointSizeSlider_ = nullptr;
+    QLabel* pointSizeLabel_ = nullptr;
     QComboBox* colorModeCombo_ = nullptr;
     QLabel* cursorLabel_ = nullptr;
 };

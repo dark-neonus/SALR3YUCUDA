@@ -11,6 +11,7 @@
 #include <QString>
 #include <QVector>
 #include <QMutex>
+#include <QRecursiveMutex>
 #include "Types.h"
 
 // Forward declarations for C types
@@ -61,7 +62,7 @@ signals:
 private:
     QString dataRoot_;
     bool initialized_ = false;
-    mutable QMutex mutex_;
+    mutable QRecursiveMutex mutex_;
 
     // Helper to convert C RunSummary to SessionInfo
     SessionInfo convertRunSummary(const void* summary);

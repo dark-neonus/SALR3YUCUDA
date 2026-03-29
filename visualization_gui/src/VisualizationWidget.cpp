@@ -53,6 +53,22 @@ void VisualizationWidget::setupUi()
     controlsLayout->addWidget(thresholdLabel_);
 
     controlsLayout->addSpacing(20);
+    
+    // Point size slider (for scatter plot)
+    QLabel* sizeLabel = new QLabel(tr("Point Size:"));
+    controlsLayout->addWidget(sizeLabel);
+    
+    pointSizeSlider_ = new QSlider(Qt::Horizontal);
+    pointSizeSlider_->setRange(100, 1000);   // 100 to 1000 pixels
+    pointSizeSlider_->setValue(500);          // Default 500 pixels (middle range)
+    pointSizeSlider_->setMaximumWidth(150);
+    controlsLayout->addWidget(pointSizeSlider_);
+    
+    pointSizeLabel_ = new QLabel("500px");
+    pointSizeLabel_->setMinimumWidth(50);
+    controlsLayout->addWidget(pointSizeLabel_);
+
+    controlsLayout->addSpacing(20);
 
     // Color mode combo (for heatmap)
     QLabel* modeLabel = new QLabel(tr("Color Scale:"));
@@ -75,6 +91,8 @@ void VisualizationWidget::setupUi()
     // Connections
     connect(thresholdSlider_, &QSlider::valueChanged,
             this, &VisualizationWidget::onThresholdChanged);
+    connect(pointSizeSlider_, &QSlider::valueChanged,
+            this, &VisualizationWidget::onPointSizeChanged);
     connect(colorModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &VisualizationWidget::onColorModeChanged);
     connect(heatmap_, &HeatmapWidget::cursorPosition,
@@ -98,6 +116,13 @@ void VisualizationWidget::onThresholdChanged(int value)
     scatterPlot_->setThreshold(threshold);
 }
 
+void VisualizationWidget::onPointSizeChanged(int value)
+{
+    float size = static_cast<float>(value);
+    pointSizeLabel_->setText(QString("%1px").arg(size, 0, 'f', 0));
+    scatterPlot_->setPointSize(size);
+}
+
 void VisualizationWidget::onColorModeChanged(int index)
 {
     HeatmapWidget::ColorMode mode = static_cast<HeatmapWidget::ColorMode>(
@@ -107,8 +132,8 @@ void VisualizationWidget::onColorModeChanged(int index)
 
 void VisualizationWidget::onCursorPosition(double x, double y, double rho1, double rho2)
 {
-    cursorLabel_->setText(QString("x=%.2f, y=%.2f | rho1=%.4f, rho2=%.4f")
-        .arg(x).arg(y).arg(rho1).arg(rho2));
+    cursorLabel_->setText(QString("x=%1, y=%2 | rho1=%3, rho2=%4")
+        .arg(x, 0, 'f', 2).arg(y, 0, 'f', 2).arg(rho1, 0, 'f', 4).arg(rho2, 0, 'f', 4));
 }
 
 } // namespace salr

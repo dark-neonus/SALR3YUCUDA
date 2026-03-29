@@ -274,6 +274,9 @@ HDF5Error hdf5_read_snapshot(const char *filepath,
 
     /* Read metadata if requested */
     if (meta) {
+        /* Initialize struct to zero to ensure all fields have valid defaults */
+        memset(meta, 0, sizeof(*meta));
+
         hid_t root = H5Gopen2(file, "/", H5P_DEFAULT);
 
         read_int_attr(root, "iteration", &meta->iteration);
@@ -306,6 +309,9 @@ HDF5Error hdf5_read_metadata(const char *filepath, SnapshotMeta *meta) {
     if (!filepath || !meta) {
         return HDF5_ERR_FILE;
     }
+
+    /* Initialize struct to zero to ensure all fields have valid defaults */
+    memset(meta, 0, sizeof(*meta));
 
     hid_t file = H5Fopen(filepath, H5F_ACC_RDONLY, H5P_DEFAULT);
     if (file < 0) {

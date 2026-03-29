@@ -8,6 +8,7 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QRegularExpression>
+#include <QCoreApplication>
 #include <cstring>
 
 // Include C database engine headers
@@ -230,10 +231,6 @@ SnapshotData DatabaseWrapper::loadSnapshot(const QString& runId, int iteration)
         return data;
     }
 
-    // First load metadata to get grid size
-    SnapshotMeta hdf5Meta;
-    memset(&hdf5Meta, 0, sizeof(hdf5Meta));
-
     // If iteration is -1, find the latest snapshot
     if (iteration < 0) {
         int* iters = nullptr;
@@ -253,6 +250,7 @@ SnapshotData DatabaseWrapper::loadSnapshot(const QString& runId, int iteration)
     QByteArray pathBytes = snapPath.toUtf8();
 
     ::SnapshotMeta cMeta;
+    memset(&cMeta, 0, sizeof(cMeta));
     HDF5Error hErr = hdf5_read_metadata(pathBytes.constData(), &cMeta);
     if (hErr != HDF5_OK) {
         db_run_close(run);

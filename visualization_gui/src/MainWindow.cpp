@@ -402,9 +402,9 @@ void MainWindow::loadSnapshot(const QString& runId, int iteration)
     // Update parameter display
     parameterDisplay_->setSnapshotMeta(data.meta);
 
-    showMessage(tr("Loaded snapshot: iteration %1, error %.2e")
+    showMessage(tr("Loaded snapshot: iteration %1, error %2")
         .arg(data.meta.iteration)
-        .arg(data.meta.currentError));
+        .arg(data.meta.currentError, 0, 'e', 2));
 }
 
 void MainWindow::onStartSimulation(const SimulationConfig& config, bool useCuda)

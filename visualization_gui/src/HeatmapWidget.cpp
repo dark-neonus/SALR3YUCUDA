@@ -134,6 +134,11 @@ void HeatmapWidget::initializeGL()
 
     // Create texture
     texture_ = new QOpenGLTexture(QOpenGLTexture::Target2D);
+
+    // If data was already set before GL was initialized, update the texture now
+    if (currentData_.isValid()) {
+        updateTexture();
+    }
 }
 
 void HeatmapWidget::resizeGL(int w, int h)

@@ -13,7 +13,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 # Find Qt6 (required)
-find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGL OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGL OpenGLWidgets Concurrent)
 
 # Find OpenGL
 find_package(OpenGL REQUIRED)
@@ -59,6 +59,7 @@ target_include_directories(salr_gui PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/database_engine/include
+    ${HDF5_INCLUDE_DIRS}
 )
 
 # Link libraries
@@ -66,8 +67,10 @@ target_link_libraries(salr_gui PRIVATE
     Qt6::Widgets
     Qt6::OpenGL
     Qt6::OpenGLWidgets
+    Qt6::Concurrent
     OpenGL::GL
     salr_db_engine
+    ${HDF5_LIBRARIES}
 )
 
 # Copy shaders to build directory
