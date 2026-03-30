@@ -334,7 +334,10 @@ SimulationConfig RunControlWidget::buildConfig() const
     config.temperature = tempSpin_->value();
     config.rho1 = rho1Spin_->value();
     config.rho2 = rho2Spin_->value();
-    config.potential.cutoffRadius = cutoffSpin_->value();
+    
+    // Use stored potential parameters (loaded from config file)
+    config.potential = storedPotential_;
+    config.potential.cutoffRadius = cutoffSpin_->value();  // Override with UI value
 
     config.solver.maxIterations = maxIterSpin_->value();
     config.solver.tolerance = tolSpin_->value();
@@ -362,6 +365,9 @@ void RunControlWidget::applyConfig(const SimulationConfig& config)
     rho1Spin_->setValue(config.rho1);
     rho2Spin_->setValue(config.rho2);
     cutoffSpin_->setValue(config.potential.cutoffRadius);
+    
+    // Store the full potential parameters
+    storedPotential_ = config.potential;
 
     maxIterSpin_->setValue(config.solver.maxIterations);
     tolSpin_->setValue(config.solver.tolerance);

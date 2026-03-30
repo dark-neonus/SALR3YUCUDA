@@ -344,7 +344,7 @@ bool DatabaseWrapper::loadConfigFile(const QString& path, SimulationConfig& conf
         int eqPos = line.indexOf('=');
         if (eqPos < 0) continue;
 
-        QString key = line.left(eqPos).trimmed().toLower();
+        QString key = line.left(eqPos).trimmed();  // Don't lowercase yet - need case for interaction params
         QString value = line.mid(eqPos + 1).trimmed();
 
         // Remove inline comments
@@ -355,26 +355,28 @@ bool DatabaseWrapper::loadConfigFile(const QString& path, SimulationConfig& conf
 
         // Parse based on section
         if (currentSection == "grid") {
-            if (key == "nx") config.grid.nx = value.toInt();
-            else if (key == "ny") config.grid.ny = value.toInt();
-            else if (key == "dx") config.grid.dx = value.toDouble();
-            else if (key == "dy") config.grid.dy = value.toDouble();
-            else if (key == "boundary_mode") {
+            QString keyLower = key.toLower();
+            if (keyLower == "nx") config.grid.nx = value.toInt();
+            else if (keyLower == "ny") config.grid.ny = value.toInt();
+            else if (keyLower == "dx") config.grid.dx = value.toDouble();
+            else if (keyLower == "dy") config.grid.dy = value.toDouble();
+            else if (keyLower == "boundary_mode") {
                 config.boundaryMode = stringToBoundaryMode(value.toUpper());
             }
         }
         else if (currentSection == "physics") {
-            if (key == "temperature") config.temperature = value.toDouble();
-            else if (key == "rho1") config.rho1 = value.toDouble();
-            else if (key == "rho2") config.rho2 = value.toDouble();
-            else if (key == "cutoff_radius") config.potential.cutoffRadius = value.toDouble();
+            QString keyLower = key.toLower();
+            if (keyLower == "temperature") config.temperature = value.toDouble();
+            else if (keyLower == "rho1") config.rho1 = value.toDouble();
+            else if (keyLower == "rho2") config.rho2 = value.toDouble();
+            else if (keyLower == "cutoff_radius") config.potential.cutoffRadius = value.toDouble();
         }
         else if (currentSection == "interaction") {
-            // Parse A_IJ_M and a_IJ_M
+            // Parse A_IJ_M and a_IJ_M - KEEP ORIGINAL CASE!
             QRegularExpression re("^([Aa])_(\\d)(\\d)_(\\d)$");
             QRegularExpressionMatch match = re.match(key);
             if (match.hasMatch()) {
-                bool isA = match.captured(1).toUpper() == "A";
+                bool isA = match.captured(1) == "A";  // Compare directly, no toUpper needed
                 int i = match.captured(2).toInt() - 1;
                 int j = match.captured(3).toInt() - 1;
                 int m = match.captured(4).toInt() - 1;
@@ -392,16 +394,18 @@ bool DatabaseWrapper::loadConfigFile(const QString& path, SimulationConfig& conf
             }
         }
         else if (currentSection == "solver") {
-            if (key == "max_iterations") config.solver.maxIterations = value.toInt();
-            else if (key == "tolerance") config.solver.tolerance = value.toDouble();
-            else if (key == "xi1") config.solver.xi1 = value.toDouble();
-            else if (key == "xi2") config.solver.xi2 = value.toDouble();
-            else if (key == "error_change_threshold") config.solver.errorChangeThreshold = value.toDouble();
-            else if (key == "xi_damping_factor") config.solver.xiDampingFactor = value.toDouble();
+            QString keyLower = key.toLower();
+            if (keyLower == "max_iterations") config.solver.maxIterations = value.toInt();
+            else if (keyLower == "tolerance") config.solver.tolerance = value.toDouble();
+            else if (keyLower == "xi1") config.solver.xi1 = value.toDouble();
+            else if (keyLower == "xi2") config.solver.xi2 = value.toDouble();
+            else if (keyLower == "error_change_threshold") config.solver.errorChangeThreshold = value.toDouble();
+            else if (keyLower == "xi_damping_factor") config.solver.xiDampingFactor = value.toDouble();
         }
         else if (currentSection == "output") {
-            if (key == "output_dir") config.outputDir = value;
-            else if (key == "save_every") config.saveEvery = value.toInt();
+            QString keyLower = key.toLower();
+            if (keyLower == "output_dir") config.outputDir = value;
+            else if (keyLower == "save_every") config.saveEvery = value.toInt();
         }
     }
 

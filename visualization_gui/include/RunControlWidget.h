@@ -49,6 +49,9 @@ private:
     DatabaseWrapper* database_;
     QString currentRunId_;
     bool isRunning_ = false;
+    
+    // Store potential parameters (not exposed in UI, but must be preserved)
+    PotentialParams storedPotential_;
 
     // Grid parameters
     QSpinBox* nxSpin_ = nullptr;
