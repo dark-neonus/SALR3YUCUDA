@@ -27,20 +27,20 @@ Each section maps a code block to the corresponding formula from the lecture sli
 const int    Nx   = cfg->grid.nx;        /* Nx = Lx / dx */
 const int    Ny   = cfg->grid.ny;        /* Ny = Ly / dy */
 const double dA   = dx * dy;
-const double beta = 1.0 / cfg->temperature;
+const double beta = 1.0 / (BOLTZMANN_CONSTANT * cfg->temperature);
 ```
 
 $$N_x = \frac{L_x}{\Delta x}, \qquad N_y = \frac{L_y}{\Delta y}$$
 
 $$dA = \Delta x \cdot \Delta y$$
 
-$$\beta = \frac{1}{T}$$
+$$\beta = \frac{1}{k_B T}$$
 
 - $N_x$, $N_y$ — number of grid cells along $x$ and $y$ (slide table: 80, 80)
 - $L_x$, $L_y$ — physical box size (slide table: 16.0, 16.0)
 - $\Delta x$, $\Delta y$ — grid spacing (slide table: 0.2, 0.2)
 - $dA$ — area of one cell; approximates $d^2r'$ in all integrals
-- $\beta$ — inverse temperature; appears explicitly in the Euler-Lagrange exponent
+- $\beta$ — inverse temperature; $k_B = 1.380649 \times 10^{-23}$ J/K is the Boltzmann constant
 - $T$ — temperature (slide table: 12.0)
 
 **Slide connection:** the slide table lists $N_x \times N_y = 6400$ nodes, $\Delta x = \Delta y = 0.2$,
@@ -386,7 +386,7 @@ $$K_2[\rho_2^{(t)}](\mathbf{r}) = \rho_{2,b}\,\exp\!\Big[-\beta\Big(\Phi_{21}(\m
 - `Phi_a[k]`, `Phi_b[k]` — two field components for species $i$ (e.g. `Phi11`, `Phi12` for $i=1$)
 - `Phi_ab`, `Phi_bb` — their bulk scalar values $\Phi_{ij,b}$ (step 3)
 - `rho0b` — bulk density $\rho_{i,b}$; ensures $K_i \to \rho_{i,b}$ in a uniform system
-- `beta` — inverse temperature $\beta = 1/T$; appears explicitly here (not pre-multiplied)
+- `beta` — inverse temperature $\beta = 1/(k_B T)$; appears explicitly here (not pre-multiplied)
 - `K1`, `K2` — new candidate densities for the Picard step
 
 **Slide connection:** the slide writes exactly $\rho_{i,b}\exp[-\beta(\Phi_{ia}+\Phi_{ib}-\Phi_{ia,b}-\Phi_{ib,b})]$.

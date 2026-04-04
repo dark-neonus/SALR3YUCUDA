@@ -267,6 +267,9 @@ static void save_final(const double *rho1, const double *rho2,
     io_save_density_2d(path, xs, ys, rho2, (size_t)nx, (size_t)ny);
 }
 
+/* Boltzmann constant in SI units (J/K) */
+#define BOLTZMANN_CONSTANT 1.380649e-23
+
 /* ── Main solver entry point ─────────────────────────────────────────────── */
 
 int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
@@ -274,7 +277,7 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
      * Slide "Parameters used in solving the problem":
      *   Nx = Lx/dx,  Ny = Ly/dy  (grid dimensions)
      *   dA = dx*dy               (cell area, slide "Two-dimensional case")
-     *   beta = 1/T               (slide "Grand thermodynamic potential")
+     *   beta = 1/(k_B*T)         (slide "Grand thermodynamic potential")
      */
     const int    Nx   = cfg->grid.nx;         /* number of grid cells in x  */
     const int    Ny   = cfg->grid.ny;         /* number of grid cells in y  */
@@ -282,7 +285,7 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
     const double dy   = cfg->grid.dy;         /* Delta_y                    */
     const size_t N    = (size_t)(Nx * Ny);    /* total grid points Nx*Ny    */
     const double dA   = dx * dy;              /* cell area Delta_x*Delta_y  */
-    const double beta = 1.0 / cfg->temperature; /* beta = 1/T               */
+    const double beta = 1.0 / (BOLTZMANN_CONSTANT * cfg->temperature); /* beta = 1/(k_B*T) */
     const int    mode = cfg->boundary_mode;
 
     /* wall_x/wall_y: actual (non-minimum-image) distances for walled axes */
@@ -511,7 +514,7 @@ int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
     const double dy   = cfg->grid.dy;
     const size_t N    = (size_t)(Nx * Ny);
     const double dA   = dx * dy;
-    const double beta = 1.0 / cfg->temperature;
+    const double beta = 1.0 / (BOLTZMANN_CONSTANT * cfg->temperature);
     const int    mode = cfg->boundary_mode;
 
     const int wall_x = (mode == BC_W2 || mode == BC_W4);
