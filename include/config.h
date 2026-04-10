@@ -19,12 +19,20 @@ typedef enum {
     BC_W4    /* hard walls on all four sides                                */
 } BoundaryMode;
 
+/* Initial distribution modes */
+typedef enum {
+    INIT_RANDOM,     /* random noise around bulk density */
+    INIT_SINUSOIDS,  /* sinusoidal pattern */
+    INIT_TRIVIAL     /* uniform bulk density */
+} InitialDistMode;
+
 /* Master configuration structure */
 typedef struct SimConfig {
     GridParams      grid;
     PotentialParams potential;
     SolverParams    solver;
     BoundaryMode    boundary_mode;   /* spatial boundary condition type     */
+    InitialDistMode init_mode;       /* initial distribution type           */
     double          temperature;     /* environment temperature T            */
     double          rho1;            /* average density of species 1         */
     double          rho2;            /* average density of species 2         */

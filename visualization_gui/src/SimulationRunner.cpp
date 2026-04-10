@@ -285,6 +285,7 @@ bool SimulationRunner::writeConfigFile(const SimulationConfig& config, const QSt
     out << "nx = " << config.grid.nx << "\n";
     out << "ny = " << config.grid.ny << "\n";
     out << "boundary_mode = " << boundaryModeToString(config.boundaryMode) << "\n";
+    out << "init_mode = " << config.initMode << "\n";
     out << "\n";
 
     // Physics section

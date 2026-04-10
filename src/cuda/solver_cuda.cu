@@ -36,14 +36,19 @@ static inline int divup(int n, int d) { return (n + d - 1) / d; }
 static inline int nblk(int N) { return divup(N, BLK); }
 static inline int nblk_red(int N) { return divup(N, BLK * 2); }
 
-/* Device: 3-Yukawa potential U(r) = sum(A_m * exp(-alpha_m * r) / r) */
-__device__ static double dev_potential(
-    double r, const double *A, const double *alpha, double rc)
+/* Device: 3-Yukawa potential U(r) using constant memory */
+__constant__ double d_A[2][2][3];
+__constant__ double d_alpha[2][2][3];
+
+__device__ static double dev_potential(double r, int pair_i, int pair_j, double rc)
 {
-    if (r <= 0.0 || r > rc) return 0.0;
+    if (r <= 0.0 || r > rc) {
+        return 0.0;
+    }
     double s = 0.0;
-    for (int m = 0; m < 3; ++m)
-        s += A[m] * exp(-alpha[m] * r) / r;
+    for (int m = 0; m < 3; ++m) {
+        s += d_A[pair_i][pair_j][m] * exp(-d_alpha[pair_i][pair_j][m] * r) / r;
+    }
     return s;
 }
 
@@ -51,19 +56,21 @@ __device__ static double dev_potential(
 
 /* Build potential lookup table */
 __global__ void k_build_pot(
-    double *tbl, const double *A, const double *alpha, double rc,
+    double *tbl, int pair_i, int pair_j, double rc,
     int nx, int ny, double dx, double dy, int wx, int wy)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id >= nx * ny) return;
+    if (id >= nx * ny) {
+        return;
+    }
 
     int diy = id / nx, dix = id % nx;
     double dry = wy ? diy * dy : (diy <= ny / 2 ? diy * dy : (diy - ny) * dy);
     double drx = wx ? dix * dx : (dix <= nx / 2 ? dix * dx : (dix - nx) * dx);
-    tbl[id] = dev_potential(sqrt(drx * drx + dry * dry), A, alpha, rc);
+    tbl[id] = dev_potential(sqrt(drx * drx + dry * dry), pair_i, pair_j, rc);
 }
 
-/* Phi convolution kernel - each thread computes Phi fields at one grid point */
+/* Phi convolution kernel - Shared memory tiling for densities */
 __global__ void k_compute_Phi(
     double * __restrict__ P11, double * __restrict__ P12,
     double * __restrict__ P21, double * __restrict__ P22,
@@ -73,38 +80,60 @@ __global__ void k_compute_Phi(
     int nx, int ny, double dA, int wx, int wy)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id >= nx * ny) return;
-
-    int iy = id / nx, ix = id % nx;
+    int N = nx * ny;
+    int valid = (id < N);
+    
+    int iy = valid ? id / nx : 0;
+    int ix = valid ? id % nx : 0;
     double p11 = 0.0, p12 = 0.0, p21 = 0.0, p22 = 0.0;
 
-    for (int jy = 0; jy < ny; ++jy) {
-        /* minimum-image (PBC) or absolute (wall) y-displacement */
-        int diy;
-        if (wy) { diy = abs(iy - jy); }
-        else     { diy = (iy - jy + ny) % ny; if (diy > ny / 2) diy = ny - diy; }
+    __shared__ double s_r1[BLK];
+    __shared__ double s_r2[BLK];
 
-        for (int jx = 0; jx < nx; ++jx) {
-            int dix;
-            if (wx) { dix = abs(ix - jx); }
-            else     { dix = (ix - jx + nx) % nx; if (dix > nx / 2) dix = nx - dix; }
+    int num_tiles = (N + BLK - 1) / BLK;
+    for (int t = 0; t < num_tiles; ++t) {
+        int t_id = t * BLK + threadIdx.x;
+        
+        /* Load tile into shared mem */
+        s_r1[threadIdx.x] = (t_id < N) ? __ldg(&r1[t_id]) : 0.0;
+        s_r2[threadIdx.x] = (t_id < N) ? __ldg(&r2[t_id]) : 0.0;
+        
+        __syncthreads();
+        
+        if (valid) {
+            int elems = min(BLK, N - t * BLK);
+            for (int e = 0; e < elems; ++e) {
+                int j_id = t * BLK + e;
+                int jy = j_id / nx;
+                int jx = j_id % nx;
 
-            int si = jy * nx + jx;
-            int ui = diy * nx + dix;
+                /* distance */
+                int diy, dix;
+                if (wy) { diy = abs(iy - jy); }
+                else    { diy = (iy - jy + ny) % ny; if (diy > ny / 2) diy = ny - diy; }
 
-            double u11 = __ldg(&U11[ui]);
-            double u12 = __ldg(&U12[ui]);
-            double u22 = __ldg(&U22[ui]);
-            double s1  = r1[si];
-            double s2  = r2[si];
+                if (wx) { dix = abs(ix - jx); }
+                else    { dix = (ix - jx + nx) % nx; if (dix > nx / 2) dix = nx - dix; }
 
-            p11 += s1 * u11;  p12 += s2 * u12;
-            p21 += s1 * u12;  p22 += s2 * u22;
+                int ui = diy * nx + dix;
+
+                double u11 = __ldg(&U11[ui]);
+                double u12 = __ldg(&U12[ui]);
+                double u22 = __ldg(&U22[ui]);
+                double s1  = s_r1[e];
+                double s2  = s_r2[e];
+
+                p11 += s1 * u11;  p12 += s2 * u12;
+                p21 += s1 * u12;  p22 += s2 * u22;
+            }
         }
+        __syncthreads();
     }
 
-    P11[id] = p11 * dA;  P12[id] = p12 * dA;
-    P21[id] = p21 * dA;  P22[id] = p22 * dA;
+    if (valid) {
+        P11[id] = p11 * dA;  P12[id] = p12 * dA;
+        P21[id] = p21 * dA;  P22[id] = p22 * dA;
+    }
 }
 
 /* Euler-Lagrange operator: K_i = rho_b * exp(-beta*(Phi_a+Phi_b-Phi_ab-Phi_bb)) */
@@ -113,7 +142,10 @@ __global__ void k_compute_K(
     double rho_b, double beta, double *K, int N)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= N) return;
+    if (i >= N) {
+        return;
+    }
+    /* Bound exponent argument via branchless clamp to avoid infinities */
     double a = -beta * (Pa[i] + Pb[i] - Pab - Pbb);
     a = fmin(fmax(a, -500.0), 500.0);
     K[i] = rho_b * exp(a);
@@ -123,7 +155,10 @@ __global__ void k_compute_K(
 __global__ void k_mix(double *rho, const double *K, double xi, int N)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= N) return;
+    if (i >= N) {
+        return;
+    }
+    /* Blend old density with newly calculated density for stabilization */
     rho[i] = (1.0 - xi) * rho[i] + xi * K[i];
 }
 
@@ -131,12 +166,23 @@ __global__ void k_mix(double *rho, const double *K, double xi, int N)
 __global__ void k_boundary(double *r1, double *r2, int nx, int ny, int mode)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id >= nx * ny) return;
+    if (id >= nx * ny) {
+        return;
+    }
     int iy = id / nx, ix = id % nx;
     int z = 0;
-    if (mode >= 1 && (ix == 0 || ix == nx - 1)) z = 1;
-    if (mode == 2 && (iy == 0 || iy == ny - 1)) z = 1;
-    if (z) { r1[id] = 0.0; r2[id] = 0.0; }
+    
+    /* Apply horizontal or full walled domain zeros to edges */
+    if (mode >= 1 && (ix == 0 || ix == nx - 1)) {
+        z = 1;
+    }
+    if (mode == 2 && (iy == 0 || iy == ny - 1)) {
+        z = 1;
+    }
+    if (z) { 
+        r1[id] = 0.0; 
+        r2[id] = 0.0; 
+    }
 }
 
 /* 5-point Laplacian smoothing to suppress checkerboard mode */
@@ -144,20 +190,24 @@ __global__ void k_smooth(
     const double *in, double *out, int nx, int ny, int mode, double eps)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id >= nx * ny) return;
+    if (id >= nx * ny) {
+        return;
+    }
     int iy = id / nx, ix = id % nx;
     int wkx = (mode >= 1), wky = (mode == 2);
 
     /* wall cells pass through unchanged */
     if ((wkx && (ix == 0 || ix == nx - 1)) ||
         (wky && (iy == 0 || iy == ny - 1))) {
-        out[id] = in[id]; return;
+        out[id] = in[id]; 
+        return;
     }
 
+    /* Periodic wrap or wall bounds mapping */
     int ym = wky ? max(iy - 1, 0)      : (iy - 1 + ny) % ny;
-    int yp = wky ? min(iy + 1, ny - 1)  : (iy + 1) % ny;
+    int yp = wky ? min(iy + 1, ny - 1) : (iy + 1) % ny;
     int xm = wkx ? max(ix - 1, 0)      : (ix - 1 + nx) % nx;
-    int xp = wkx ? min(ix + 1, nx - 1)  : (ix + 1) % nx;
+    int xp = wkx ? min(ix + 1, nx - 1) : (ix + 1) % nx;
 
     out[id] = (1.0 - 4.0 * eps) * in[id]
             + eps * (in[iy * nx + xm] + in[iy * nx + xp]
@@ -170,10 +220,21 @@ __global__ void k_sq_diff(
     int nx, int ny, int mode)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id >= nx * ny) return;
+    if (id >= nx * ny) {
+        return;
+    }
     int iy = id / nx, ix = id % nx;
-    if (mode >= 1 && (ix == 0 || ix == nx - 1)) { out[id] = 0.0; return; }
-    if (mode == 2 && (iy == 0 || iy == ny - 1)) { out[id] = 0.0; return; }
+    
+    /* Disregard wall boundaries for error measurements */
+    if (mode >= 1 && (ix == 0 || ix == nx - 1)) { 
+        out[id] = 0.0; 
+        return; 
+    }
+    if (mode == 2 && (iy == 0 || iy == ny - 1)) { 
+        out[id] = 0.0; 
+        return; 
+    }
+    
     double d = a[id] - b[id];
     out[id] = d * d;
 }
@@ -184,13 +245,23 @@ __global__ void k_reduce(const double *in, double *out, int N)
     extern __shared__ double sh[];
     int tid = threadIdx.x;
     int i   = blockIdx.x * blockDim.x * 2 + tid;
+    
+    /* Load initial tile pairs into shared memory bounds */
     sh[tid] = (i < N ? in[i] : 0.0) + (i + blockDim.x < N ? in[i + blockDim.x] : 0.0);
     __syncthreads();
+    
+    /* Iteratively half the subset via stride reductions */
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s) sh[tid] += sh[tid + s];
+        if (tid < s) {
+            sh[tid] += sh[tid + s];
+        }
         __syncthreads();
     }
-    if (tid == 0) out[blockIdx.x] = sh[0];
+    
+    /* Export the single scalar per block */
+    if (tid == 0) {
+        out[blockIdx.x] = sh[0];
+    }
 }
 
 /* Reduction summing only interior cells (walls excluded) */
@@ -204,25 +275,39 @@ __global__ void k_reduce_interior(
     int i2  = i + blockDim.x;
 
     double v1 = 0.0, v2 = 0.0;
+    
+    /* Discard invalid or wall elements for accurate total mass calculation */
     if (i < N) {
         int iy1 = i / nx, ix1 = i % nx;
         int skip = (mode >= 1 && (ix1 == 0 || ix1 == nx - 1))
                 || (mode == 2 && (iy1 == 0 || iy1 == ny - 1));
-        if (!skip) v1 = in[i];
+        if (!skip) {
+            v1 = in[i];
+        }
     }
     if (i2 < N) {
         int iy2 = i2 / nx, ix2 = i2 % nx;
         int skip = (mode >= 1 && (ix2 == 0 || ix2 == nx - 1))
                 || (mode == 2 && (iy2 == 0 || iy2 == ny - 1));
-        if (!skip) v2 = in[i2];
+        if (!skip) {
+            v2 = in[i2];
+        }
     }
+    
     sh[tid] = v1 + v2;
     __syncthreads();
+    
+    /* Parallel chunk accumulation */
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s) sh[tid] += sh[tid + s];
+        if (tid < s) {
+            sh[tid] += sh[tid + s];
+        }
         __syncthreads();
     }
-    if (tid == 0) out[blockIdx.x] = sh[0];
+    
+    if (tid == 0) {
+        out[blockIdx.x] = sh[0];
+    }
 }
 
 /* Scale interior cells by a constant factor (mass renormalisation) */
@@ -230,10 +315,19 @@ __global__ void k_scale_interior(
     double *data, double factor, int nx, int ny, int mode)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id >= nx * ny) return;
+    if (id >= nx * ny) {
+        return;
+    }
     int iy = id / nx, ix = id % nx;
-    if (mode >= 1 && (ix == 0 || ix == nx - 1)) return;
-    if (mode == 2 && (iy == 0 || iy == ny - 1)) return;
+    
+    /* Skip walls when updating active domain species constants */
+    if (mode >= 1 && (ix == 0 || ix == nx - 1)) {
+        return;
+    }
+    if (mode == 2 && (iy == 0 || iy == ny - 1)) {
+        return;
+    }
+    
     data[id] *= factor;
 }
 
@@ -369,25 +463,15 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
 
     double *h_part = (double *)malloc(nb_r * sizeof(double));
 
-    /* Yukawa parameters on device (3 doubles each, 6 small arrays) */
-    double *d_A11, *d_a11, *d_A12, *d_a12, *d_A22, *d_a22;
-    size_t ysz = YUKAWA_TERMS * sizeof(double);
-    CUDA_CHECK(cudaMalloc(&d_A11, ysz));  CUDA_CHECK(cudaMalloc(&d_a11, ysz));
-    CUDA_CHECK(cudaMalloc(&d_A12, ysz));  CUDA_CHECK(cudaMalloc(&d_a12, ysz));
-    CUDA_CHECK(cudaMalloc(&d_A22, ysz));  CUDA_CHECK(cudaMalloc(&d_a22, ysz));
+    /* Copy potential parameters globally onto constant cache */
+    CUDA_CHECK(cudaMemcpyToSymbol(d_A, cfg->potential.A, sizeof(double)*2*2*3));
+    CUDA_CHECK(cudaMemcpyToSymbol(d_alpha, cfg->potential.alpha, sizeof(double)*2*2*3));
 
-    CUDA_CHECK(cudaMemcpy(d_A11, cfg->potential.A[0][0],     ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_a11, cfg->potential.alpha[0][0], ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_A12, cfg->potential.A[0][1],     ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_a12, cfg->potential.alpha[0][1], ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_A22, cfg->potential.A[1][1],     ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_a22, cfg->potential.alpha[1][1], ysz, cudaMemcpyHostToDevice));
-
-    /* Build potential tables on GPU */
+    /* Build potential tables on GPU using species indices (0=Sp1, 1=Sp2) */
     int g = nblk(N);
-    k_build_pot<<<g, BLK>>>(d_U11, d_A11, d_a11, rc, Nx, Ny, dx, dy, wx, wy);
-    k_build_pot<<<g, BLK>>>(d_U12, d_A12, d_a12, rc, Nx, Ny, dx, dy, wx, wy);
-    k_build_pot<<<g, BLK>>>(d_U22, d_A22, d_a22, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U11, 0, 0, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U12, 0, 1, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U22, 1, 1, rc, Nx, Ny, dx, dy, wx, wy);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     /* Bulk Phi fields from numerical sum of potential tables */
@@ -510,8 +594,21 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
             double mn1 = rho1[0], mx1 = rho1[0], sm1 = 0;
             double mn2 = rho2[0], mx2 = rho2[0], sm2 = 0;
             for (int k = 0; k < N; ++k) {
-                if (rho1[k] < mn1) mn1 = rho1[k]; if (rho1[k] > mx1) mx1 = rho1[k]; sm1 += rho1[k];
-                if (rho2[k] < mn2) mn2 = rho2[k]; if (rho2[k] > mx2) mx2 = rho2[k]; sm2 += rho2[k];
+                if (rho1[k] < mn1) {
+                    mn1 = rho1[k];
+                }
+                if (rho1[k] > mx1) {
+                    mx1 = rho1[k];
+                }
+                sm1 += rho1[k];
+                
+                if (rho2[k] < mn2) {
+                    mn2 = rho2[k];
+                }
+                if (rho2[k] > mx2) {
+                    mx2 = rho2[k];
+                }
+                sm2 += rho2[k];
             }
             printf("  iter %6d   err=%.3e   err_delta=%.3e   xi1=%.4f   xi2=%.4f   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
                    iter + 1, err, err_delta, xi1, xi2, mn1, sm1 / (double)N, mx1,
@@ -555,9 +652,6 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     cudaFree(d_U11);  cudaFree(d_U12);  cudaFree(d_U22);
     cudaFree(d_P11);  cudaFree(d_P12);  cudaFree(d_P21);  cudaFree(d_P22);
     cudaFree(d_K1);   cudaFree(d_K2);   cudaFree(d_tmp);  cudaFree(d_part);
-    cudaFree(d_A11);  cudaFree(d_a11);
-    cudaFree(d_A12);  cudaFree(d_a12);
-    cudaFree(d_A22);  cudaFree(d_a22);
     free(h_part); free(xs); free(ys);
 
     return converged ? 0 : 1;
@@ -635,25 +729,15 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
 
     double *h_part = (double *)malloc(nb_r * sizeof(double));
 
-    /* Yukawa parameters on device */
-    double *d_A11, *d_a11, *d_A12, *d_a12, *d_A22, *d_a22;
-    size_t ysz = YUKAWA_TERMS * sizeof(double);
-    CUDA_CHECK(cudaMalloc(&d_A11, ysz));  CUDA_CHECK(cudaMalloc(&d_a11, ysz));
-    CUDA_CHECK(cudaMalloc(&d_A12, ysz));  CUDA_CHECK(cudaMalloc(&d_a12, ysz));
-    CUDA_CHECK(cudaMalloc(&d_A22, ysz));  CUDA_CHECK(cudaMalloc(&d_a22, ysz));
+    /* Load potential parameters onto constant cache */
+    CUDA_CHECK(cudaMemcpyToSymbol(d_A, cfg->potential.A, sizeof(double)*2*2*3));
+    CUDA_CHECK(cudaMemcpyToSymbol(d_alpha, cfg->potential.alpha, sizeof(double)*2*2*3));
 
-    CUDA_CHECK(cudaMemcpy(d_A11, cfg->potential.A[0][0],     ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_a11, cfg->potential.alpha[0][0], ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_A12, cfg->potential.A[0][1],     ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_a12, cfg->potential.alpha[0][1], ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_A22, cfg->potential.A[1][1],     ysz, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_a22, cfg->potential.alpha[1][1], ysz, cudaMemcpyHostToDevice));
-
-    /* Build potential tables on GPU */
+    /* Build potential tables on GPU using species indices */
     int g = nblk(N);
-    k_build_pot<<<g, BLK>>>(d_U11, d_A11, d_a11, rc, Nx, Ny, dx, dy, wx, wy);
-    k_build_pot<<<g, BLK>>>(d_U12, d_A12, d_a12, rc, Nx, Ny, dx, dy, wx, wy);
-    k_build_pot<<<g, BLK>>>(d_U22, d_A22, d_a22, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U11, 0, 0, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U12, 0, 1, rc, Nx, Ny, dx, dy, wx, wy);
+    k_build_pot<<<g, BLK>>>(d_U22, 1, 1, rc, Nx, Ny, dx, dy, wx, wy);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     /* Bulk Phi fields */
@@ -785,8 +869,21 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
             double mn1 = rho1[0], mx1 = rho1[0], sm1 = 0;
             double mn2 = rho2[0], mx2 = rho2[0], sm2 = 0;
             for (int k = 0; k < N; ++k) {
-                if (rho1[k] < mn1) mn1 = rho1[k]; if (rho1[k] > mx1) mx1 = rho1[k]; sm1 += rho1[k];
-                if (rho2[k] < mn2) mn2 = rho2[k]; if (rho2[k] > mx2) mx2 = rho2[k]; sm2 += rho2[k];
+                if (rho1[k] < mn1) {
+                    mn1 = rho1[k];
+                }
+                if (rho1[k] > mx1) {
+                    mx1 = rho1[k];
+                }
+                sm1 += rho1[k];
+                
+                if (rho2[k] < mn2) {
+                    mn2 = rho2[k];
+                }
+                if (rho2[k] > mx2) {
+                    mx2 = rho2[k];
+                }
+                sm2 += rho2[k];
             }
             printf("  iter %6d   err=%.3e   err_delta=%.3e   xi1=%.4f   xi2=%.4f   rho1[%.4f,%.4f,%.4f]  rho2[%.4f,%.4f,%.4f]\n",
                    iter + 1, err, err_delta, xi1, xi2, mn1, sm1 / (double)N, mx1,
@@ -835,9 +932,6 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     cudaFree(d_U11);  cudaFree(d_U12);  cudaFree(d_U22);
     cudaFree(d_P11);  cudaFree(d_P12);  cudaFree(d_P21);  cudaFree(d_P22);
     cudaFree(d_K1);   cudaFree(d_K2);   cudaFree(d_tmp);  cudaFree(d_part);
-    cudaFree(d_A11);  cudaFree(d_a11);
-    cudaFree(d_A12);  cudaFree(d_a12);
-    cudaFree(d_A22);  cudaFree(d_a22);
     free(h_part); free(xs); free(ys);
 
     /* Set output parameter for final error */
