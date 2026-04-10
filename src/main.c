@@ -20,6 +20,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <math.h>
 
 #include "../include/config.h"
 #include "../include/grid.h"
@@ -188,49 +189,84 @@ int main(int argc, char **argv) {
         printf("\nCreated run: %s\n", db_run_get_id(run));
         printf("Run directory: %s\n", db_run_get_path(run));
 
-        /* Initialize density with random noise */
+        /* Initialize density based on init_mode */
         const int nx = cfg.grid.nx;
         const int ny = cfg.grid.ny;
+        const double Lx = cfg.grid.Lx;
+        const double Ly = cfg.grid.Ly;
+        const double dx = cfg.grid.dx;
+        const double dy = cfg.grid.dy;
+        const double PI = 3.14159265358979323846;
+
+        printf("Initializing densities with mode: ");
+        if (cfg.init_mode == INIT_SINUSOIDS) {
+            printf("SINUSOIDS\n");
+        } else if (cfg.init_mode == INIT_TRIVIAL) {
+            printf("TRIVIAL (uniform)\n");
+        } else {
+            printf("RANDOM noise\n");
+        }
 
         srand((unsigned int)67);
 
         for (int iy = 0; iy < ny; ++iy) {
             for (int ix = 0; ix < nx; ++ix) {
                 int idx = iy * nx + ix;
+                double x = (ix + 0.5) * dx;
+                double y = (iy + 0.5) * dy;
 
-                double noise1 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
-                double noise2 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
-
-                r1[idx] = cfg.rho1 * (1.0 + noise1);
-                r2[idx] = cfg.rho2 * (1.0 + noise2);
+                if (cfg.init_mode == INIT_SINUSOIDS) {
+                    r1[idx] = cfg.rho1 * (1.0 + sin(x * 2.0 * PI / Lx * 2.0) * sin(y * 2.0 * PI / Ly * 2.0));
+                    r2[idx] = cfg.rho2 * (1.0 + cos(x * 2.0 * PI / Lx * 2.0) * cos(y * 2.0 * PI / Ly * 2.0));
+                } else if (cfg.init_mode == INIT_TRIVIAL) {
+                    r1[idx] = cfg.rho1;
+                    r2[idx] = cfg.rho2;
+                } else {
+                    double noise1 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
+                    double noise2 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
+                    r1[idx] = cfg.rho1 * (1.0 + noise1);
+                    r2[idx] = cfg.rho2 * (1.0 + noise2);
+                }
 
                 if (r1[idx] < 1e-6) r1[idx] = 1e-6;
                 if (r2[idx] < 1e-6) r2[idx] = 1e-6;
             }
         }
+
+        printf("Density initialization complete. rho1: [%.4f, %.4f], rho2: [%.4f, %.4f]\n",
+               r1[0], r1[nx*ny/2], r2[0], r2[nx*ny/2]);
     }
 #else
-    /* Initial condition: uniform random distribution with small perturbations
-     * This avoids biasing toward any particular pattern and lets the SALR
-     * potential determine the emergent structure naturally.
-     */
     {
         const int nx = cfg.grid.nx;
         const int ny = cfg.grid.ny;
+        const double Lx = cfg.grid.Lx;
+        const double Ly = cfg.grid.Ly;
+        const double dx = cfg.grid.dx;
+        const double dy = cfg.grid.dy;
+        const double PI = 3.14159265358979323846;
 
         srand((unsigned int)67);
 
         for (int iy = 0; iy < ny; ++iy) {
             for (int ix = 0; ix < nx; ++ix) {
                 int idx = iy * nx + ix;
+                double x = (ix + 0.5) * dx;
+                double y = (iy + 0.5) * dy;
 
-                double noise1 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
-                double noise2 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
+                if (cfg.init_mode == INIT_SINUSOIDS) {
+                    r1[idx] = cfg.rho1 * (1.0 + sin(x * 2.0 * PI / Lx * 2.0) * sin(y * 2.0 * PI / Ly * 2.0));
+                    r2[idx] = cfg.rho2 * (1.0 + cos(x * 2.0 * PI / Lx * 2.0) * cos(y * 2.0 * PI / Ly * 2.0));
+                } else if (cfg.init_mode == INIT_TRIVIAL) {
+                    r1[idx] = cfg.rho1;
+                    r2[idx] = cfg.rho2;
+                } else {
+                    double noise1 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
+                    double noise2 = 1.0 * (rand() / (double)RAND_MAX - 0.5);
+                    r1[idx] = cfg.rho1 * (1.0 + noise1);
+                    r2[idx] = cfg.rho2 * (1.0 + noise2);
+                }
 
-                r1[idx] = cfg.rho1 * (1.0 + noise1);
-                r2[idx] = cfg.rho2 * (1.0 + noise2);
-
-                // Ensure positive density
                 if (r1[idx] < 1e-6) r1[idx] = 1e-6;
                 if (r2[idx] < 1e-6) r2[idx] = 1e-6;
             }

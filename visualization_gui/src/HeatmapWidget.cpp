@@ -4,11 +4,10 @@
 
 #include "HeatmapWidget.h"
 #include <QMouseEvent>
-#include <QDebug>
+#include <QtMath>
 
 namespace salr {
 
-// Vertex shader source
 static const char* heatmapVertexShader = R"(
 #version 330 core
 layout(location = 0) in vec2 position;
@@ -22,7 +21,6 @@ void main() {
 }
 )";
 
-// Fragment shader source
 static const char* heatmapFragmentShader = R"(
 #version 330 core
 in vec2 fragTexCoord;
@@ -86,34 +84,66 @@ void HeatmapWidget::setColorMode(ColorMode mode)
     }
 }
 
+void HeatmapWidget::setAxisScale(AxisScale scale)
+{
+    if (axisScale_ == scale) return;
+
+    axisScale_ = scale;
+
+    if (isValid() && currentData_.isValid()) {
+        makeCurrent();
+        updateTexture();
+        doneCurrent();
+        update();
+    }
+}
+
+void HeatmapWidget::setSpecies1Color(const QColor& color)
+{
+    if (species1Color_ == color) return;
+
+    species1Color_ = color;
+
+    if (isValid() && currentData_.isValid()) {
+        makeCurrent();
+        updateTexture();
+        doneCurrent();
+        update();
+    }
+}
+
+void HeatmapWidget::setSpecies2Color(const QColor& color)
+{
+    if (species2Color_ == color) return;
+
+    species2Color_ = color;
+
+    if (isValid() && currentData_.isValid()) {
+        makeCurrent();
+        updateTexture();
+        doneCurrent();
+        update();
+    }
+}
+
 void HeatmapWidget::initializeGL()
 {
     initializeOpenGLFunctions();
 
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
-    // Create shader program
     shaderProgram_ = new QOpenGLShaderProgram(this);
-    if (!shaderProgram_->addShaderFromSourceCode(QOpenGLShader::Vertex, heatmapVertexShader)) {
-        qWarning() << "Failed to compile heatmap vertex shader:" << shaderProgram_->log();
-    }
-    if (!shaderProgram_->addShaderFromSourceCode(QOpenGLShader::Fragment, heatmapFragmentShader)) {
-        qWarning() << "Failed to compile heatmap fragment shader:" << shaderProgram_->log();
-    }
-    if (!shaderProgram_->link()) {
-        qWarning() << "Failed to link heatmap shader program:" << shaderProgram_->log();
-    }
+    shaderProgram_->addShaderFromSourceCode(QOpenGLShader::Vertex, heatmapVertexShader);
+    shaderProgram_->addShaderFromSourceCode(QOpenGLShader::Fragment, heatmapFragmentShader);
+    shaderProgram_->link();
 
-    // Create VAO and VBO for fullscreen quad
     vao_.create();
     vbo_.create();
 
     vao_.bind();
     vbo_.bind();
 
-    // Quad vertices: position (2) + texcoord (2)
     float quadVertices[] = {
-        // Position     TexCoord
         -1.0f, -1.0f,   0.0f, 0.0f,
          1.0f, -1.0f,   1.0f, 0.0f,
          1.0f,  1.0f,   1.0f, 1.0f,
@@ -132,10 +162,8 @@ void HeatmapWidget::initializeGL()
     vao_.release();
     vbo_.release();
 
-    // Create texture
     texture_ = new QOpenGLTexture(QOpenGLTexture::Target2D);
 
-    // If data was already set before GL was initialized, update the texture now
     if (currentData_.isValid()) {
         updateTexture();
     }
@@ -158,7 +186,6 @@ void HeatmapWidget::paintGL()
 
     shaderProgram_->bind();
 
-    // Maintain aspect ratio
     float dataAspect = 1.0f;
     if (currentData_.isValid() && currentData_.meta.Ly > 0) {
         dataAspect = currentData_.meta.Lx / currentData_.meta.Ly;
@@ -173,7 +200,6 @@ void HeatmapWidget::paintGL()
         scaleX = dataAspect / viewAspect;
     }
 
-    // Update quad vertices for aspect ratio
     vbo_.bind();
     float quadVertices[] = {
         -scaleX, -scaleY,   0.0f, 0.0f,
@@ -207,7 +233,6 @@ void HeatmapWidget::updateTexture()
     int nx = currentData_.meta.nx;
     int ny = currentData_.meta.ny;
 
-    // Determine color scale
     double rho1Max, rho2Max;
     if (colorMode_ == Clipped) {
         rho1Max = 3.0 * currentData_.rho1Mean;
@@ -217,32 +242,39 @@ void HeatmapWidget::updateTexture()
         rho2Max = currentData_.rho2Max;
     }
 
-    // Avoid division by zero
     if (rho1Max <= 0) rho1Max = 1.0;
     if (rho2Max <= 0) rho2Max = 1.0;
 
-    // Create RGBA image data
     QVector<uchar> pixels(nx * ny * 4);
+
+    double c1R = species1Color_.redF();
+    double c1G = species1Color_.greenF();
+    double c1B = species1Color_.blueF();
+    double c2R = species2Color_.redF();
+    double c2G = species2Color_.greenF();
+    double c2B = species2Color_.blueF();
 
     for (int iy = 0; iy < ny; ++iy) {
         for (int ix = 0; ix < nx; ++ix) {
             int srcIdx = iy * nx + ix;
-            // Flip Y for OpenGL texture coordinates
             int dstIdx = ((ny - 1 - iy) * nx + ix) * 4;
 
             double r1 = currentData_.rho1[srcIdx];
             double r2 = currentData_.rho2[srcIdx];
 
-            // Normalize to [0, 1]
-            double n1 = qBound(0.0, r1 / rho1Max, 1.0);
-            double n2 = qBound(0.0, r2 / rho2Max, 1.0);
+            double n1, n2;
+            if (axisScale_ == Logarithmic) {
+                double logMin = 1e-6;
+                n1 = qBound(0.0, qLn(qMax(r1, logMin) / logMin) / qLn(rho1Max / logMin), 1.0);
+                n2 = qBound(0.0, qLn(qMax(r2, logMin) / logMin) / qLn(rho2Max / logMin), 1.0);
+            } else {
+                n1 = qBound(0.0, r1 / rho1Max, 1.0);
+                n2 = qBound(0.0, r2 / rho2Max, 1.0);
+            }
 
-            // Color mapping: Purple for species 1, Green for species 2
-            // Using RGB values from gnuplot: Purple (#8B008B), Green (#2E8B57)
-            // Species 1 contributes to R and B, Species 2 contributes to G and B
-            int R = static_cast<int>(139 * n1 + 46 * n2);   // Purple R + Green R
-            int G = static_cast<int>(139 * n2);              // Green contribution
-            int B = static_cast<int>(139 * n1 + 87 * n2);   // Purple B + Green B
+            int R = static_cast<int>(255 * (c1R * n1 + c2R * n2 * (1.0 - n1)));
+            int G = static_cast<int>(255 * (c1G * n1 + c2G * n2 * (1.0 - n1)));
+            int B = static_cast<int>(255 * (c1B * n1 + c2B * n2 * (1.0 - n1)));
 
             pixels[dstIdx + 0] = static_cast<uchar>(qBound(0, R, 255));
             pixels[dstIdx + 1] = static_cast<uchar>(qBound(0, G, 255));
@@ -251,7 +283,6 @@ void HeatmapWidget::updateTexture()
         }
     }
 
-    // Recreate texture with new size if needed
     if (texture_->isCreated()) {
         texture_->destroy();
     }
@@ -272,13 +303,11 @@ void HeatmapWidget::mouseMoveEvent(QMouseEvent* event)
         return;
     }
 
-    // Convert mouse position to data coordinates
     int nx = currentData_.meta.nx;
     int ny = currentData_.meta.ny;
     double Lx = currentData_.meta.Lx;
     double Ly = currentData_.meta.Ly;
 
-    // Account for aspect ratio correction
     float dataAspect = Lx / Ly;
     float viewAspect = float(viewportWidth_) / float(viewportHeight_);
     float scaleX = 1.0f, scaleY = 1.0f, offsetX = 0.0f, offsetY = 0.0f;
@@ -291,24 +320,20 @@ void HeatmapWidget::mouseMoveEvent(QMouseEvent* event)
         offsetX = (1.0f - scaleX) / 2.0f;
     }
 
-    // Normalized position [0, 1]
     float normX = float(event->pos().x()) / viewportWidth_;
-    float normY = 1.0f - float(event->pos().y()) / viewportHeight_;  // Flip Y
+    float normY = 1.0f - float(event->pos().y()) / viewportHeight_;
 
-    // Check if inside data area
     if (normX < offsetX || normX > 1.0f - offsetX ||
         normY < offsetY || normY > 1.0f - offsetY) {
         return;
     }
 
-    // Map to data coordinates
     float dataX = (normX - offsetX) / scaleX;
     float dataY = (normY - offsetY) / scaleY;
 
     double x = dataX * Lx;
     double y = dataY * Ly;
 
-    // Get grid indices
     int ix = qBound(0, static_cast<int>(dataX * nx), nx - 1);
     int iy = qBound(0, static_cast<int>(dataY * ny), ny - 1);
     int idx = iy * nx + ix;

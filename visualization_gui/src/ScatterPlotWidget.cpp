@@ -169,9 +169,37 @@ void ScatterPlotWidget::setPointSize(float size)
 {
     if (qFuzzyCompare(pointSize_, size)) return;
     
-    pointSize_ = qMax(100.0f, qMin(size, 1000.0f));  // Clamp between 100 and 1000
+    pointSize_ = qMax(100.0f, qMin(size, 1000.0f));
     update();
     emit pointSizeChanged(pointSize_);
+}
+
+void ScatterPlotWidget::setSpecies1Color(const QColor& color)
+{
+    if (species1Color_ == color) return;
+    
+    species1Color_ = color;
+    
+    if (isValid() && currentData_.isValid()) {
+        makeCurrent();
+        updateVertexData();
+        doneCurrent();
+        update();
+    }
+}
+
+void ScatterPlotWidget::setSpecies2Color(const QColor& color)
+{
+    if (species2Color_ == color) return;
+    
+    species2Color_ = color;
+    
+    if (isValid() && currentData_.isValid()) {
+        makeCurrent();
+        updateVertexData();
+        doneCurrent();
+        update();
+    }
 }
 
 void ScatterPlotWidget::resetView()
@@ -359,7 +387,6 @@ void ScatterPlotWidget::updateVertexData()
     double dx = currentData_.meta.dx;
     double dy = currentData_.meta.dy;
 
-    // Pre-count vertices above threshold
     int count = 0;
     for (int i = 0; i < nx * ny; ++i) {
         if (currentData_.rho1[i] > threshold_) count++;
@@ -371,47 +398,47 @@ void ScatterPlotWidget::updateVertexData()
         return;
     }
 
-    // Build vertex data
     QVector<float> positions;
     QVector<float> colors;
     positions.reserve(count * 3);
     colors.reserve(count * 4);
 
-    // Colors: species 1 = purple (0.545, 0, 0.545), species 2 = green (0.18, 0.545, 0.34)
+    float c1r = species1Color_.redF();
+    float c1g = species1Color_.greenF();
+    float c1b = species1Color_.blueF();
+    float c2r = species2Color_.redF();
+    float c2g = species2Color_.greenF();
+    float c2b = species2Color_.blueF();
+
     for (int iy = 0; iy < ny; ++iy) {
         for (int ix = 0; ix < nx; ++ix) {
             int idx = iy * nx + ix;
             float x = (ix + 0.5f) * dx;
             float y = (iy + 0.5f) * dy;
 
-            // Species 1 (purple)
             double r1 = currentData_.rho1[idx];
             if (r1 > threshold_) {
                 positions << x << y << static_cast<float>(r1);
-                colors << 0.545f << 0.0f << 0.545f << 0.7f;
+                colors << c1r << c1g << c1b << 0.7f;
             }
 
-            // Species 2 (green)
             double r2 = currentData_.rho2[idx];
             if (r2 > threshold_) {
                 positions << x << y << static_cast<float>(r2);
-                colors << 0.18f << 0.545f << 0.34f << 0.7f;
+                colors << c2r << c2g << c2b << 0.7f;
             }
         }
     }
 
     vertexCount_ = positions.size() / 3;
 
-    // Upload to GPU - note: must keep VBO bound while setting up vertex attributes
     vao_.bind();
 
-    // Setup positions (attribute 0)
     vboPositions_.bind();
     vboPositions_.allocate(positions.constData(), positions.size() * sizeof(float));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
 
-    // Setup colors (attribute 1)
     vboColors_.bind();
     vboColors_.allocate(colors.constData(), colors.size() * sizeof(float));
     glEnableVertexAttribArray(1);
@@ -420,7 +447,6 @@ void ScatterPlotWidget::updateVertexData()
     vboColors_.release();
     vao_.release();
     
-    // Force repaint
     update();
 }
 

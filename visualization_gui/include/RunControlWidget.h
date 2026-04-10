@@ -13,11 +13,18 @@
 #include <QCheckBox>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QScrollArea>
 #include "Types.h"
 
 namespace salr {
 
 class DatabaseWrapper;
+
+enum class InitialDistribution {
+    Random,
+    Sinusoids,
+    Trivial
+};
 
 class RunControlWidget : public QWidget {
     Q_OBJECT
@@ -27,6 +34,8 @@ public:
 
     void setCurrentSession(const QString& runId);
     void setRunning(bool running);
+
+    InitialDistribution initialDistribution() const;
 
 signals:
     void startSimulation(const SimulationConfig& config, bool useCuda);
@@ -49,9 +58,10 @@ private:
     DatabaseWrapper* database_;
     QString currentRunId_;
     bool isRunning_ = false;
-    
-    // Store potential parameters (not exposed in UI, but must be preserved)
+
     PotentialParams storedPotential_;
+
+    QScrollArea* scrollArea_ = nullptr;
 
     // Grid parameters
     QSpinBox* nxSpin_ = nullptr;
@@ -73,6 +83,9 @@ private:
     QDoubleSpinBox* xi2Spin_ = nullptr;
     QSpinBox* saveEverySpin_ = nullptr;
 
+    // Initial distribution
+    QComboBox* initDistCombo_ = nullptr;
+
     // Resume options
     QCheckBox* resumeCheck_ = nullptr;
     QComboBox* snapshotCombo_ = nullptr;
@@ -83,6 +96,12 @@ private:
     QPushButton* startCpuBtn_ = nullptr;
     QPushButton* startCudaBtn_ = nullptr;
     QPushButton* stopBtn_ = nullptr;
+
+    // Collapsible group boxes
+    QGroupBox* gridGroup_ = nullptr;
+    QGroupBox* physicsGroup_ = nullptr;
+    QGroupBox* solverGroup_ = nullptr;
+    QGroupBox* initGroup_ = nullptr;
 };
 
 } // namespace salr

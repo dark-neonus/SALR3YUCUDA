@@ -32,6 +32,7 @@ int config_load(const char *filename, SimConfig *config) {
     memset(config, 0, sizeof(*config));
     snprintf(config->output_dir, sizeof(config->output_dir), "output/");
     config->save_every = 100;
+    config->init_mode = INIT_RANDOM;  /* default: random noise */
     config->solver.max_iterations         = 10000;
     config->solver.tolerance              = 1e-8;
     config->solver.xi1                    = 0.2;
@@ -78,6 +79,11 @@ int config_load(const char *filename, SimConfig *config) {
                 if      (strcmp(val, "W2") == 0) config->boundary_mode = BC_W2;
                 else if (strcmp(val, "W4") == 0) config->boundary_mode = BC_W4;
                 else                             config->boundary_mode = BC_PBC;
+            }
+            else if (strcmp(key, "init_mode") == 0) {
+                if      (strcmp(val, "sinusoids") == 0) config->init_mode = INIT_SINUSOIDS;
+                else if (strcmp(val, "trivial") == 0)   config->init_mode = INIT_TRIVIAL;
+                else                                    config->init_mode = INIT_RANDOM;
             }
         }
         /* [physics] section */

@@ -76,6 +76,7 @@ struct SimulationConfig {
     PotentialParams potential;
     SolverParams solver;
     BoundaryMode boundaryMode = BoundaryMode::PBC;
+    QString initMode = "random";  // "random", "sinusoids", "trivial"
     double temperature = 2.9;
     double rho1 = 0.4;  // Bulk density species 1
     double rho2 = 0.2;  // Bulk density species 2

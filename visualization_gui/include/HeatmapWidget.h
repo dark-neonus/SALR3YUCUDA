@@ -11,6 +11,7 @@
 #include <QOpenGLVertexArrayObject>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLTexture>
+#include <QColor>
 #include "Types.h"
 
 namespace salr {
@@ -20,8 +21,13 @@ class HeatmapWidget : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core 
 
 public:
     enum ColorMode {
-        Clipped,    // Clipped to 3x mean
-        AutoScale   // Full range
+        Clipped,
+        AutoScale
+    };
+
+    enum AxisScale {
+        Linear,
+        Logarithmic
     };
 
     explicit HeatmapWidget(QWidget* parent = nullptr);
@@ -31,6 +37,14 @@ public:
 
     void setColorMode(ColorMode mode);
     ColorMode colorMode() const { return colorMode_; }
+
+    void setAxisScale(AxisScale scale);
+    AxisScale axisScale() const { return axisScale_; }
+
+    void setSpecies1Color(const QColor& color);
+    void setSpecies2Color(const QColor& color);
+    QColor species1Color() const { return species1Color_; }
+    QColor species2Color() const { return species2Color_; }
 
 signals:
     void cursorPosition(double x, double y, double rho1, double rho2);
@@ -44,19 +58,19 @@ protected:
 
 private:
     void updateTexture();
-    void drawColorbar();
 
-    // Data
     SnapshotData currentData_;
     ColorMode colorMode_ = Clipped;
+    AxisScale axisScale_ = Linear;
 
-    // OpenGL objects
+    QColor species1Color_ = QColor(139, 0, 139);
+    QColor species2Color_ = QColor(46, 139, 87);
+
     QOpenGLShaderProgram* shaderProgram_ = nullptr;
     QOpenGLVertexArrayObject vao_;
     QOpenGLBuffer vbo_;
     QOpenGLTexture* texture_ = nullptr;
 
-    // Viewport
     int viewportWidth_ = 0;
     int viewportHeight_ = 0;
 };

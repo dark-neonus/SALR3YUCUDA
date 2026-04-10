@@ -13,6 +13,7 @@
 #include <QMessageBox>
 #include <QDir>
 #include <QCoreApplication>
+#include <QScrollArea>
 
 namespace salr {
 
@@ -21,17 +22,27 @@ RunControlWidget::RunControlWidget(DatabaseWrapper* database, QWidget* parent)
     , database_(database)
 {
     setupUi();
-    onLoadDefault();  // Initialize with default values
+    onLoadDefault();
 }
 
 void RunControlWidget::setupUi()
 {
-    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    QVBoxLayout* outerLayout = new QVBoxLayout(this);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    scrollArea_ = new QScrollArea();
+    scrollArea_->setWidgetResizable(true);
+    scrollArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    QWidget* container = new QWidget();
+    QVBoxLayout* mainLayout = new QVBoxLayout(container);
     mainLayout->setContentsMargins(4, 4, 4, 4);
 
-    // Grid parameters group
-    QGroupBox* gridGroup = new QGroupBox(tr("Grid"));
-    QFormLayout* gridLayout = new QFormLayout(gridGroup);
+    // Grid parameters group (collapsible)
+    gridGroup_ = new QGroupBox(tr("▼ Grid"));
+    gridGroup_->setCheckable(true);
+    gridGroup_->setChecked(true);
+    QFormLayout* gridLayout = new QFormLayout();
 
     nxSpin_ = new QSpinBox();
     nxSpin_->setRange(8, 1024);
@@ -63,11 +74,21 @@ void RunControlWidget::setupUi()
     boundaryCombo_->addItem("W4 (walls all)", "W4");
     gridLayout->addRow(tr("Boundary:"), boundaryCombo_);
 
-    mainLayout->addWidget(gridGroup);
+    gridGroup_->setLayout(gridLayout);
+    mainLayout->addWidget(gridGroup_);
 
-    // Physics parameters group
-    QGroupBox* physicsGroup = new QGroupBox(tr("Physics"));
-    QFormLayout* physicsLayout = new QFormLayout(physicsGroup);
+    connect(gridGroup_, &QGroupBox::toggled, [this](bool checked) {
+        gridGroup_->setTitle(checked ? tr("▼ Grid") : tr("▶ Grid"));
+        for (auto* child : gridGroup_->findChildren<QWidget*>()) {
+            child->setVisible(checked);
+        }
+    });
+
+    // Physics parameters group (collapsible)
+    physicsGroup_ = new QGroupBox(tr("▼ Physics"));
+    physicsGroup_->setCheckable(true);
+    physicsGroup_->setChecked(true);
+    QFormLayout* physicsLayout = new QFormLayout();
 
     tempSpin_ = new QDoubleSpinBox();
     tempSpin_->setRange(0.1, 100.0);
@@ -93,11 +114,21 @@ void RunControlWidget::setupUi()
     cutoffSpin_->setValue(16.0);
     physicsLayout->addRow(tr("Cutoff:"), cutoffSpin_);
 
-    mainLayout->addWidget(physicsGroup);
+    physicsGroup_->setLayout(physicsLayout);
+    mainLayout->addWidget(physicsGroup_);
 
-    // Solver parameters group
-    QGroupBox* solverGroup = new QGroupBox(tr("Solver"));
-    QFormLayout* solverLayout = new QFormLayout(solverGroup);
+    connect(physicsGroup_, &QGroupBox::toggled, [this](bool checked) {
+        physicsGroup_->setTitle(checked ? tr("▼ Physics") : tr("▶ Physics"));
+        for (auto* child : physicsGroup_->findChildren<QWidget*>()) {
+            child->setVisible(checked);
+        }
+    });
+
+    // Solver parameters group (collapsible)
+    solverGroup_ = new QGroupBox(tr("▼ Solver"));
+    solverGroup_->setCheckable(true);
+    solverGroup_->setChecked(true);
+    QFormLayout* solverLayout = new QFormLayout();
 
     maxIterSpin_ = new QSpinBox();
     maxIterSpin_->setRange(100, 1000000);
@@ -132,7 +163,37 @@ void RunControlWidget::setupUi()
     saveEverySpin_->setValue(1000);
     solverLayout->addRow(tr("Save every:"), saveEverySpin_);
 
-    mainLayout->addWidget(solverGroup);
+    solverGroup_->setLayout(solverLayout);
+    mainLayout->addWidget(solverGroup_);
+
+    connect(solverGroup_, &QGroupBox::toggled, [this](bool checked) {
+        solverGroup_->setTitle(checked ? tr("▼ Solver") : tr("▶ Solver"));
+        for (auto* child : solverGroup_->findChildren<QWidget*>()) {
+            child->setVisible(checked);
+        }
+    });
+
+    // Initial distribution group (collapsible)
+    initGroup_ = new QGroupBox(tr("▼ Initial Distribution"));
+    initGroup_->setCheckable(true);
+    initGroup_->setChecked(true);
+    QFormLayout* initLayout = new QFormLayout();
+
+    initDistCombo_ = new QComboBox();
+    initDistCombo_->addItem(tr("Random noise"), static_cast<int>(InitialDistribution::Random));
+    initDistCombo_->addItem(tr("Sinusoidal pattern"), static_cast<int>(InitialDistribution::Sinusoids));
+    initDistCombo_->addItem(tr("Uniform (trivial)"), static_cast<int>(InitialDistribution::Trivial));
+    initLayout->addRow(tr("Type:"), initDistCombo_);
+
+    initGroup_->setLayout(initLayout);
+    mainLayout->addWidget(initGroup_);
+
+    connect(initGroup_, &QGroupBox::toggled, [this](bool checked) {
+        initGroup_->setTitle(checked ? tr("▼ Initial Distribution") : tr("▶ Initial Distribution"));
+        for (auto* child : initGroup_->findChildren<QWidget*>()) {
+            child->setVisible(checked);
+        }
+    });
 
     // Resume options
     QGroupBox* resumeGroup = new QGroupBox(tr("Resume/Branch"));
@@ -187,13 +248,20 @@ void RunControlWidget::setupUi()
     mainLayout->addWidget(stopBtn_);
 
     mainLayout->addStretch();
+
+    scrollArea_->setWidget(container);
+    outerLayout->addWidget(scrollArea_);
+}
+
+InitialDistribution RunControlWidget::initialDistribution() const
+{
+    return static_cast<InitialDistribution>(initDistCombo_->currentData().toInt());
 }
 
 void RunControlWidget::setCurrentSession(const QString& runId)
 {
     currentRunId_ = runId;
 
-    // Populate snapshot combo for resume
     snapshotCombo_->clear();
 
     if (!runId.isEmpty() && database_->isInitialized()) {
@@ -202,7 +270,6 @@ void RunControlWidget::setCurrentSession(const QString& runId)
             snapshotCombo_->addItem(QString("Iteration %1").arg(iter), iter);
         }
 
-        // Select latest by default
         if (snapshotCombo_->count() > 0) {
             snapshotCombo_->setCurrentIndex(snapshotCombo_->count() - 1);
         }
@@ -219,7 +286,6 @@ void RunControlWidget::setRunning(bool running)
     startCudaBtn_->setEnabled(!running);
     stopBtn_->setEnabled(running);
 
-    // Disable config editing while running
     nxSpin_->setEnabled(!running);
     nySpin_->setEnabled(!running);
     dxSpin_->setEnabled(!running);
@@ -234,6 +300,7 @@ void RunControlWidget::setRunning(bool running)
     xi1Spin_->setEnabled(!running);
     xi2Spin_->setEnabled(!running);
     saveEverySpin_->setEnabled(!running);
+    initDistCombo_->setEnabled(!running);
     resumeCheck_->setEnabled(!running);
     loadDefaultBtn_->setEnabled(!running);
     loadSessionBtn_->setEnabled(!running && !currentRunId_.isEmpty());
@@ -241,7 +308,6 @@ void RunControlWidget::setRunning(bool running)
 
 void RunControlWidget::onLoadDefault()
 {
-    // Try to find default.cfg
     QString appDir = QCoreApplication::applicationDirPath();
     QStringList searchPaths = {
         appDir + "/configs/default.cfg",
@@ -263,7 +329,6 @@ void RunControlWidget::onLoadDefault()
     if (loaded) {
         applyConfig(config);
     } else {
-        // Use hardcoded defaults
         config = SimulationConfig();
         applyConfig(config);
     }
@@ -331,13 +396,20 @@ SimulationConfig RunControlWidget::buildConfig() const
 
     config.boundaryMode = stringToBoundaryMode(boundaryCombo_->currentData().toString());
 
+    InitialDistribution initDist = static_cast<InitialDistribution>(initDistCombo_->currentData().toInt());
+    if (initDist == InitialDistribution::Sinusoids)
+        config.initMode = "sinusoids";
+    else if (initDist == InitialDistribution::Trivial)
+        config.initMode = "trivial";
+    else
+        config.initMode = "random";
+
     config.temperature = tempSpin_->value();
     config.rho1 = rho1Spin_->value();
     config.rho2 = rho2Spin_->value();
-    
-    // Use stored potential parameters (loaded from config file)
+
     config.potential = storedPotential_;
-    config.potential.cutoffRadius = cutoffSpin_->value();  // Override with UI value
+    config.potential.cutoffRadius = cutoffSpin_->value();
 
     config.solver.maxIterations = maxIterSpin_->value();
     config.solver.tolerance = tolSpin_->value();
@@ -365,8 +437,7 @@ void RunControlWidget::applyConfig(const SimulationConfig& config)
     rho1Spin_->setValue(config.rho1);
     rho2Spin_->setValue(config.rho2);
     cutoffSpin_->setValue(config.potential.cutoffRadius);
-    
-    // Store the full potential parameters
+
     storedPotential_ = config.potential;
 
     maxIterSpin_->setValue(config.solver.maxIterations);

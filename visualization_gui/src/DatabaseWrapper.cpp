@@ -363,6 +363,9 @@ bool DatabaseWrapper::loadConfigFile(const QString& path, SimulationConfig& conf
             else if (keyLower == "boundary_mode") {
                 config.boundaryMode = stringToBoundaryMode(value.toUpper());
             }
+            else if (keyLower == "init_mode") {
+                config.initMode = value.toLower();
+            }
         }
         else if (currentSection == "physics") {
             QString keyLower = key.toLower();
@@ -431,6 +434,7 @@ bool DatabaseWrapper::saveConfigFile(const QString& path, const SimulationConfig
     out << "nx = " << config.grid.nx << "\n";
     out << "ny = " << config.grid.ny << "\n";
     out << "boundary_mode = " << boundaryModeToString(config.boundaryMode) << "\n";
+    out << "init_mode = " << config.initMode << "\n";
     out << "\n";
 
     // Physics section

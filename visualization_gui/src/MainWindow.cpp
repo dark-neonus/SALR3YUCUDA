@@ -142,6 +142,11 @@ void MainWindow::setupMenuBar()
     toggleRightDock->setText(tr("Show &Controls Panel"));
     viewMenu->addAction(toggleRightDock);
 
+    QAction* toggleParamsAction = viewMenu->addAction(tr("Show &Parameters Table"));
+    toggleParamsAction->setCheckable(true);
+    toggleParamsAction->setChecked(true);
+    connect(toggleParamsAction, &QAction::toggled, parameterDisplay_, &QWidget::setVisible);
+
     // Simulation menu
     QMenu* simMenu = menuBar->addMenu(tr("&Simulation"));
 

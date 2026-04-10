@@ -12,6 +12,7 @@
 #include <QOpenGLShaderProgram>
 #include <QMatrix4x4>
 #include <QVector3D>
+#include <QColor>
 #include "Types.h"
 
 namespace salr {
@@ -29,6 +30,11 @@ public:
     
     void setPointSize(float size);
     float pointSize() const { return pointSize_; }
+
+    void setSpecies1Color(const QColor& color);
+    void setSpecies2Color(const QColor& color);
+    QColor species1Color() const { return species1Color_; }
+    QColor species2Color() const { return species2Color_; }
 
     void resetView();
 
@@ -50,39 +56,35 @@ private:
     void drawAxes();
     void updateProjection();
 
-    // Data
     SnapshotData currentData_;
     double threshold_ = 0.01;
-    float pointSize_ = 500.0f;  // Default point size
+    float pointSize_ = 500.0f;
 
-    // Camera
+    QColor species1Color_ = QColor(139, 0, 139);
+    QColor species2Color_ = QColor(46, 139, 87);
+
     float rotationX_ = 30.0f;
     float rotationY_ = -45.0f;
     float zoom_ = 1.0f;
     QPoint lastMousePos_;
     
-    // Viewport
     int width_ = 1;
     int height_ = 1;
     bool needsProjectionUpdate_ = true;
 
-    // OpenGL objects
     QOpenGLShaderProgram* shaderProgram_ = nullptr;
     QOpenGLVertexArrayObject vao_;
     QOpenGLBuffer vboPositions_;
     QOpenGLBuffer vboColors_;
     int vertexCount_ = 0;
 
-    // Axes
     QOpenGLVertexArrayObject axesVao_;
     QOpenGLBuffer axesVbo_;
 
-    // Matrices
     QMatrix4x4 projection_;
     QMatrix4x4 view_;
     QMatrix4x4 model_;
 
-    // Bounds
     float xMin_ = 0, xMax_ = 1;
     float yMin_ = 0, yMax_ = 1;
     float zMin_ = 0, zMax_ = 1;
