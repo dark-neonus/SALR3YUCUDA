@@ -400,8 +400,6 @@ extern "C" double solver_l2_diff(const double *a, const double *b, size_t n)
     return sqrt(sum / (double)n);
 }
 
-#define BOLTZMANN_CONSTANT 1.380649e-23
-
 extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg)
 {
     /* Grid/physics constants */
@@ -411,7 +409,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     const double dy   = cfg->grid.dy;
     const int    N    = Nx * Ny;
     const double dA   = dx * dy;
-    const double beta = 1.0 / (cfg->temperature * BOLTZMANN_CONSTANT);
+    const double beta = 1.0 / cfg->temperature; /* reduced units: k_B = 1 */
     const int    mode = cfg->boundary_mode;
     const int    wx   = (mode == BC_W2 || mode == BC_W4);
     const int    wy   = (mode == BC_W4);
@@ -674,7 +672,7 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     const double dy   = cfg->grid.dy;
     const int    N    = Nx * Ny;
     const double dA   = dx * dy;
-    const double beta = 1.0 / (BOLTZMANN_CONSTANT * cfg->temperature);
+    const double beta = 1.0 / cfg->temperature; /* reduced units: k_B = 1 */
     const int    mode = cfg->boundary_mode;
     const int    wx   = (mode == BC_W2 || mode == BC_W4);
     const int    wy   = (mode == BC_W4);
