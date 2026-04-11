@@ -424,16 +424,12 @@ void MainWindow::onStartSimulation(const SimulationConfig& config, bool useCuda)
     simulationRunner_->startNew(config, useCuda);
 }
 
-void MainWindow::onResumeSimulation(const QString& runId, int iteration, bool useCuda)
+void MainWindow::onResumeSimulation(const QString& runId, int iteration, const SimulationConfig& config, bool useCuda)
 {
     if (!database_->isInitialized()) {
         showError(tr("Database not initialized"));
         return;
     }
-
-    // Load config from session
-    SessionInfo info = database_->getSessionInfo(runId);
-    SimulationConfig config = database_->configFromSession(info);
 
     simulationRunner_->setDatabasePath(databasePath_);
     simulationRunner_->setExecutablePath(database_->executablePath(useCuda));

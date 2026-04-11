@@ -52,7 +52,7 @@ private slots:
 
     // Run control
     void onStartSimulation(const SimulationConfig& config, bool useCuda);
-    void onResumeSimulation(const QString& runId, int iteration, bool useCuda);
+    void onResumeSimulation(const QString& runId, int iteration, const SimulationConfig& config, bool useCuda);
     void onStopSimulation();
 
     // Simulation runner signals

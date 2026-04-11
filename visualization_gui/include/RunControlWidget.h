@@ -39,7 +39,7 @@ public:
 
 signals:
     void startSimulation(const SimulationConfig& config, bool useCuda);
-    void resumeSimulation(const QString& runId, int iteration, bool useCuda);
+    void resumeSimulation(const QString& runId, int iteration, const SimulationConfig& config, bool useCuda);
     void stopSimulation();
 
 private slots:
@@ -60,6 +60,7 @@ private:
     bool isRunning_ = false;
 
     PotentialParams storedPotential_;
+    SolverParams storedSolver_;
 
     QScrollArea* scrollArea_ = nullptr;
 

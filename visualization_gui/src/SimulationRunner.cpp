@@ -39,6 +39,7 @@ void SimulationRunner::startNew(const SimulationConfig& config, bool useCuda)
 
     resumeRunId_.clear();
     resumeIteration_ = -1;
+    lastConverged_ = false;
 
     // Generate temp config file
     tempConfigPath_ = QDir::temp().filePath(
@@ -98,6 +99,7 @@ void SimulationRunner::resume(const QString& runId, int iteration,
 
     resumeRunId_ = runId;
     resumeIteration_ = iteration;
+    lastConverged_ = false;
 
     // Generate temp config file
     tempConfigPath_ = QDir::temp().filePath(
@@ -233,8 +235,8 @@ void SimulationRunner::onProcessFinished(int exitCode, QProcess::ExitStatus stat
         tempConfigPath_.clear();
     }
 
-    bool success = (status == QProcess::NormalExit && exitCode == 0);
-    emit finished(lastConverged_, currentRunId_);
+    const bool converged = lastConverged_ || (status == QProcess::NormalExit && exitCode == 0);
+    emit finished(converged, currentRunId_);
 
     process_->deleteLater();
     process_ = nullptr;
@@ -351,9 +353,16 @@ void SimulationRunner::parseOutputLine(const QString& line)
         emit progress(iteration, error, delta);
     }
 
-    // Parse convergence
-    if (line.contains("converged", Qt::CaseInsensitive) ||
-        line.contains("Convergence reached", Qt::CaseInsensitive)) {
+    // Parse convergence with explicit negative/positive markers.
+    // This avoids false positives from messages like "did not converge".
+    static QRegularExpression nonConvRe(R"((did\s+not\s+converge|not\s+converged|failed\s+to\s+converge))",
+                                        QRegularExpression::CaseInsensitiveOption);
+    static QRegularExpression convRe(R"((\bconverged\b|convergence\s+reached))",
+                                     QRegularExpression::CaseInsensitiveOption);
+
+    if (nonConvRe.match(line).hasMatch()) {
+        lastConverged_ = false;
+    } else if (convRe.match(line).hasMatch()) {
         lastConverged_ = true;
     }
 }

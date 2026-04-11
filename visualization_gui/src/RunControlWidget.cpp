@@ -351,7 +351,7 @@ void RunControlWidget::onStartCpu()
 
     if (resumeCheck_->isChecked() && snapshotCombo_->currentIndex() >= 0) {
         int iteration = snapshotCombo_->currentData().toInt();
-        emit resumeSimulation(currentRunId_, iteration, false);
+        emit resumeSimulation(currentRunId_, iteration, config, false);
     } else {
         emit startSimulation(config, false);
     }
@@ -363,7 +363,7 @@ void RunControlWidget::onStartCuda()
 
     if (resumeCheck_->isChecked() && snapshotCombo_->currentIndex() >= 0) {
         int iteration = snapshotCombo_->currentData().toInt();
-        emit resumeSimulation(currentRunId_, iteration, true);
+        emit resumeSimulation(currentRunId_, iteration, config, true);
     } else {
         emit startSimulation(config, true);
     }
@@ -376,7 +376,7 @@ void RunControlWidget::onResume()
     }
 
     int iteration = snapshotCombo_->currentData().toInt();
-    emit resumeSimulation(currentRunId_, iteration, false);
+    emit resumeSimulation(currentRunId_, iteration, buildConfig(), false);
 }
 
 void RunControlWidget::onStop()
@@ -411,6 +411,8 @@ SimulationConfig RunControlWidget::buildConfig() const
     config.potential = storedPotential_;
     config.potential.cutoffRadius = cutoffSpin_->value();
 
+    // Preserve solver fields not exposed in the UI.
+    config.solver = storedSolver_;
     config.solver.maxIterations = maxIterSpin_->value();
     config.solver.tolerance = tolSpin_->value();
     config.solver.xi1 = xi1Spin_->value();
@@ -439,11 +441,12 @@ void RunControlWidget::applyConfig(const SimulationConfig& config)
     cutoffSpin_->setValue(config.potential.cutoffRadius);
 
     storedPotential_ = config.potential;
+    storedSolver_ = config.solver;
 
-    maxIterSpin_->setValue(config.solver.maxIterations);
-    tolSpin_->setValue(config.solver.tolerance);
-    xi1Spin_->setValue(config.solver.xi1);
-    xi2Spin_->setValue(config.solver.xi2);
+    maxIterSpin_->setValue(storedSolver_.maxIterations);
+    tolSpin_->setValue(storedSolver_.tolerance);
+    xi1Spin_->setValue(storedSolver_.xi1);
+    xi2Spin_->setValue(storedSolver_.xi2);
 
     saveEverySpin_->setValue(config.saveEvery);
 }
