@@ -134,28 +134,14 @@ static void compute_K(const double *Phi_a,  const double *Phi_b,
     }
 }
 
-/* Zero density at wall boundary cells */
+/* Cell-centered grid: no physical cell should be forced to zero at edges. */
 static void apply_boundary_mask(double *rho1, double *rho2,
                                  int nx, int ny, int mode) {
-    if (mode == BC_PBC) return;
-
-    /* W2 and W4: hard walls at x=0 (ix=0) and x=Lx (ix=Nx-1) */
-    for (int iy = 0; iy < ny; ++iy) {
-        rho1[iy * nx + 0]        = 0.0;
-        rho1[iy * nx + (nx - 1)] = 0.0;
-        rho2[iy * nx + 0]        = 0.0;
-        rho2[iy * nx + (nx - 1)] = 0.0;
-    }
-
-    /* W4 only: hard walls at y=0 (iy=0) and y=Ly (iy=Ny-1) */
-    if (mode == BC_W4) {
-        for (int ix = 0; ix < nx; ++ix) {
-            rho1[0 * nx + ix]        = 0.0;
-            rho1[(ny - 1) * nx + ix] = 0.0;
-            rho2[0 * nx + ix]        = 0.0;
-            rho2[(ny - 1) * nx + ix] = 0.0;
-        }
-    }
+    (void)rho1;
+    (void)rho2;
+    (void)nx;
+    (void)ny;
+    (void)mode;
 }
 
 /* 5-point Laplacian smoothing to suppress checkerboard instability */
@@ -168,10 +154,10 @@ static void smooth_density(double *rho, int nx, int ny, int mode)
 
     int wall_x = (mode == BC_W2 || mode == BC_W4);
     int wall_y = (mode == BC_W4);
-    int x_start = wall_x ? 1 : 0;
-    int x_end   = wall_x ? nx - 1 : nx;
-    int y_start = wall_y ? 1 : 0;
-    int y_end   = wall_y ? ny - 1 : ny;
+    int x_start = 0;
+    int x_end   = nx;
+    int y_start = 0;
+    int y_end   = ny;
 
     memcpy(tmp, rho, (size_t)(nx * ny) * sizeof(double));
 
@@ -215,13 +201,13 @@ double solver_l2_diff(const double *a, const double *b, size_t n) {
     return sqrt(sum / (double)n);
 }
 
-/* L2 difference over interior cells only (excludes wall cells) */
+/* L2 difference over all physical cells */
 static double solver_l2_diff_interior(const double *a, const double *b,
                                        int nx, int ny, int mode) {
-    int x_start = (mode == BC_W2 || mode == BC_W4) ? 1 : 0;
-    int x_end   = (mode == BC_W2 || mode == BC_W4) ? nx - 1 : nx;
-    int y_start = (mode == BC_W4) ? 1 : 0;
-    int y_end   = (mode == BC_W4) ? ny - 1 : ny;
+    int x_start = 0;
+    int x_end   = nx;
+    int y_start = 0;
+    int y_end   = ny;
     
     double sum = 0.0;
     size_t count = 0;
@@ -235,7 +221,8 @@ static double solver_l2_diff_interior(const double *a, const double *b,
             count++;
         }
     }
-    
+
+    (void)mode;
     return (count > 0) ? sqrt(sum / (double)count) : 0.0;
 }
 
@@ -388,10 +375,10 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
 
         /* Step 2b: Mass renormalisation */
         {
-            int x_start = (mode == BC_W2 || mode == BC_W4) ? 1 : 0;
-            int x_end   = (mode == BC_W2 || mode == BC_W4) ? Nx - 1 : Nx;
-            int y_start = (mode == BC_W4) ? 1 : 0;
-            int y_end   = (mode == BC_W4) ? Ny - 1 : Ny;
+            int x_start = 0;
+            int x_end   = Nx;
+            int y_start = 0;
+            int y_end   = Ny;
             
             double s1 = 0.0, s2 = 0.0;
             size_t interior_count = 0;
@@ -621,10 +608,10 @@ int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
 
         /* Step 2b: Mass renormalisation */
         {
-            int x_start = (mode == BC_W2 || mode == BC_W4) ? 1 : 0;
-            int x_end   = (mode == BC_W2 || mode == BC_W4) ? Nx - 1 : Nx;
-            int y_start = (mode == BC_W4) ? 1 : 0;
-            int y_end   = (mode == BC_W4) ? Ny - 1 : Ny;
+            int x_start = 0;
+            int x_end   = Nx;
+            int y_start = 0;
+            int y_end   = Ny;
 
             double s1 = 0.0, s2 = 0.0;
             size_t interior_count = 0;

@@ -163,27 +163,16 @@ __global__ void k_mix(double *rho, const double *K, double xi, int N)
     rho[i] = (1.0 - xi) * rho[i] + xi * K[i];
 }
 
-/* Zero density at wall nodes (BC_W2=1, BC_W4=2) */
+/* Cell-centered grid: no physical cell is an external wall node to be zeroed. */
 __global__ void k_boundary(double *r1, double *r2, int nx, int ny, int mode)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id >= nx * ny) {
         return;
     }
-    int iy = id / nx, ix = id % nx;
-    int z = 0;
-    
-    /* Apply horizontal or full walled domain zeros to edges */
-    if (mode >= 1 && (ix == 0 || ix == nx - 1)) {
-        z = 1;
-    }
-    if (mode == 2 && (iy == 0 || iy == ny - 1)) {
-        z = 1;
-    }
-    if (z) { 
-        r1[id] = 0.0; 
-        r2[id] = 0.0; 
-    }
+    (void)r1;
+    (void)r2;
+    (void)mode;
 }
 
 /* 5-point Laplacian smoothing to suppress checkerboard mode */
@@ -197,13 +186,6 @@ __global__ void k_smooth(
     int iy = id / nx, ix = id % nx;
     int wkx = (mode >= 1), wky = (mode == 2);
 
-    /* wall cells pass through unchanged */
-    if ((wkx && (ix == 0 || ix == nx - 1)) ||
-        (wky && (iy == 0 || iy == ny - 1))) {
-        out[id] = in[id]; 
-        return;
-    }
-
     /* Periodic wrap or wall bounds mapping */
     int ym = wky ? max(iy - 1, 0)      : (iy - 1 + ny) % ny;
     int yp = wky ? min(iy + 1, ny - 1) : (iy + 1) % ny;
@@ -215,7 +197,7 @@ __global__ void k_smooth(
                    + in[ym * nx + ix] + in[yp * nx + ix]);
 }
 
-/* (a-b)^2 per element, zero at wall cells */
+/* (a-b)^2 per element over all physical cells */
 __global__ void k_sq_diff(
     const double *a, const double *b, double *out,
     int nx, int ny, int mode)
@@ -224,17 +206,9 @@ __global__ void k_sq_diff(
     if (id >= nx * ny) {
         return;
     }
-    int iy = id / nx, ix = id % nx;
-    
-    /* Disregard wall boundaries for error measurements */
-    if (mode >= 1 && (ix == 0 || ix == nx - 1)) { 
-        out[id] = 0.0; 
-        return; 
-    }
-    if (mode == 2 && (iy == 0 || iy == ny - 1)) { 
-        out[id] = 0.0; 
-        return; 
-    }
+    (void)nx;
+    (void)ny;
+    (void)mode;
     
     double d = a[id] - b[id];
     out[id] = d * d;
@@ -265,7 +239,7 @@ __global__ void k_reduce(const double *in, double *out, int N)
     }
 }
 
-/* Reduction summing only interior cells (walls excluded) */
+/* Reduction over all physical cells */
 __global__ void k_reduce_interior(
     const double *in, double *out, int nx, int ny, int mode)
 {
@@ -276,24 +250,15 @@ __global__ void k_reduce_interior(
     int i2  = i + blockDim.x;
 
     double v1 = 0.0, v2 = 0.0;
-    
-    /* Discard invalid or wall elements for accurate total mass calculation */
+
     if (i < N) {
-        int iy1 = i / nx, ix1 = i % nx;
-        int skip = (mode >= 1 && (ix1 == 0 || ix1 == nx - 1))
-                || (mode == 2 && (iy1 == 0 || iy1 == ny - 1));
-        if (!skip) {
-            v1 = in[i];
-        }
+        v1 = in[i];
     }
     if (i2 < N) {
-        int iy2 = i2 / nx, ix2 = i2 % nx;
-        int skip = (mode >= 1 && (ix2 == 0 || ix2 == nx - 1))
-                || (mode == 2 && (iy2 == 0 || iy2 == ny - 1));
-        if (!skip) {
-            v2 = in[i2];
-        }
+        v2 = in[i2];
     }
+
+    (void)mode;
     
     sh[tid] = v1 + v2;
     __syncthreads();
@@ -311,7 +276,7 @@ __global__ void k_reduce_interior(
     }
 }
 
-/* Scale interior cells by a constant factor (mass renormalisation) */
+/* Scale all physical cells by a constant factor (mass renormalisation) */
 __global__ void k_scale_interior(
     double *data, double factor, int nx, int ny, int mode)
 {
@@ -319,16 +284,10 @@ __global__ void k_scale_interior(
     if (id >= nx * ny) {
         return;
     }
-    int iy = id / nx, ix = id % nx;
-    
-    /* Skip walls when updating active domain species constants */
-    if (mode >= 1 && (ix == 0 || ix == nx - 1)) {
-        return;
-    }
-    if (mode == 2 && (iy == 0 || iy == ny - 1)) {
-        return;
-    }
-    
+    (void)nx;
+    (void)ny;
+    (void)mode;
+
     data[id] *= factor;
 }
 
@@ -359,14 +318,11 @@ static double gpu_sum_interior(
     return s;
 }
 
-/* Count interior (non-wall) cells */
+/* Count physical cells for cell-centered discretisation */
 static int count_interior(int nx, int ny, int mode)
 {
-    switch (mode) {
-        case BC_W2:  return (nx - 2) * ny;
-        case BC_W4:  return (nx - 2) * (ny - 2);
-        default:     return nx * ny;
-    }
+    (void)mode;
+    return nx * ny;
 }
 
 /* Save snapshot to disk (host-side helper) */
