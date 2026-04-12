@@ -93,6 +93,8 @@ static void compute_Phi(
                         if (dix > nx / 2) dix = nx - dix;
                     }
                     if (dix >= nx) continue;  /* out of range */
+
+                    if (dix == 0 && diy == 0) continue;
                     
                     double s1 = rho1[jy * nx + jx];  /* rho1(r') */
                     double s2 = rho2[jy * nx + jx];  /* rho2(r') */

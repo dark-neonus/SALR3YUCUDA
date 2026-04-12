@@ -114,7 +114,8 @@ __global__ void k_compute_Phi(
 
                 if (wx) { dix = abs(ix - jx); }
                 else    { dix = (ix - jx + nx) % nx; if (dix > nx / 2) dix = nx - dix; }
-
+                
+                if (diy == 0 && dix == 0) continue;
                 int ui = diy * nx + dix;
 
                 double u11 = __ldg(&U11[ui]);
