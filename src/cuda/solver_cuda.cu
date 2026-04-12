@@ -173,7 +173,7 @@ __global__ void k_compute_K(
     K[i] = rho_b * exp(a);
 }
 
-/* Picard mixing: ρ ← (1−ξ)·ρ + ξ·K */
+/* Picard mixing: ρ <- (1−ξ)·ρ + ξ·K */
 __global__ void k_mix(double *rho, const double *K, double xi, int N)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -463,6 +463,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     double *d_U11,  *d_U12,  *d_U22;
     double *d_P11,  *d_P12,  *d_P21,  *d_P22;
     double *d_K1,   *d_K2,   *d_tmp,  *d_part;
+    double *d_s1,   *d_s2;
     int    nb_r = nblk_red(N);
 
     CUDA_CHECK(cudaMalloc(&d_rho1, sz));
@@ -477,9 +478,12 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     CUDA_CHECK(cudaMalloc(&d_K1,   sz));
     CUDA_CHECK(cudaMalloc(&d_K2,   sz));
     CUDA_CHECK(cudaMalloc(&d_tmp,  sz));
+    CUDA_CHECK(cudaMalloc(&d_s1,   sz));
+    CUDA_CHECK(cudaMalloc(&d_s2,   sz));
     CUDA_CHECK(cudaMalloc(&d_part, nb_r * sizeof(double)));
 
-    double *h_part = (double *)malloc(nb_r * sizeof(double));
+    double *h_part = NULL;
+    CUDA_CHECK(cudaMallocHost((void **)&h_part, nb_r * sizeof(double)));
 
     /* Copy potential parameters globally onto constant cache */
     CUDA_CHECK(cudaMemcpyToSymbol(d_A, cfg->potential.A, sizeof(double)*2*2*3));
@@ -490,7 +494,6 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     k_build_pot<<<g, BLK>>>(d_U11, 0, 0, rc, Nx, Ny, dx, dy, wx, wy);
     k_build_pot<<<g, BLK>>>(d_U12, 0, 1, rc, Nx, Ny, dx, dy, wx, wy);
     k_build_pot<<<g, BLK>>>(d_U22, 1, 1, rc, Nx, Ny, dx, dy, wx, wy);
-    CUDA_CHECK(cudaDeviceSynchronize());
 
     /* Bulk Phi fields from numerical sum of potential tables */
     double sU11 = gpu_sum(d_U11, d_part, h_part, N);
@@ -523,7 +526,6 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     CUDA_CHECK(cudaMemcpy(d_rho1, rho1, sz, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_rho2, rho2, sz, cudaMemcpyHostToDevice));
     k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
-    CUDA_CHECK(cudaDeviceSynchronize());
 
     /* copy back for initial snapshot */
     CUDA_CHECK(cudaMemcpy(rho1, d_rho1, sz, cudaMemcpyDeviceToHost));
@@ -588,20 +590,26 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
         }
         prev_err = err;
 
-        /* 4. Picard mixing: ρ ← (1−ξ)ρ + ξK */
+        /* 4. Picard mixing: ρ <- (1−ξ)ρ + ξK */
         k_mix<<<g, BLK>>>(d_rho1, d_K1, xi1, N);
         k_mix<<<g, BLK>>>(d_rho2, d_K2, xi2, N);
 
-        /* 5. Boundary → smooth → boundary */
+        /* 5. Boundary -> smooth -> boundary */
         k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
 
-        k_smooth<<<g, BLK>>>(d_rho1, d_tmp, Nx, Ny, mode, SMOOTH_EPS);
-        CUDA_CHECK(cudaMemcpy(d_rho1, d_tmp, sz, cudaMemcpyDeviceToDevice));
-        k_smooth<<<g, BLK>>>(d_rho2, d_tmp, Nx, Ny, mode, SMOOTH_EPS);
-        CUDA_CHECK(cudaMemcpy(d_rho2, d_tmp, sz, cudaMemcpyDeviceToDevice));
+        k_smooth<<<g, BLK>>>(d_rho1, d_s1, Nx, Ny, mode, SMOOTH_EPS);
+        k_smooth<<<g, BLK>>>(d_rho2, d_s2, Nx, Ny, mode, SMOOTH_EPS);
+
+        {
+            double *swap = d_rho1;
+            d_rho1 = d_s1;
+            d_s1 = swap;
+            swap = d_rho2;
+            d_rho2 = d_s2;
+            d_s2 = swap;
+        }
 
         k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
-        CUDA_CHECK(cudaDeviceSynchronize());
 
         /* 6. Logging and periodic snapshots */
         io_log_convergence(log_path, iter, err);
@@ -670,8 +678,9 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
     cudaFree(d_rho1); cudaFree(d_rho2);
     cudaFree(d_U11);  cudaFree(d_U12);  cudaFree(d_U22);
     cudaFree(d_P11);  cudaFree(d_P12);  cudaFree(d_P21);  cudaFree(d_P22);
-    cudaFree(d_K1);   cudaFree(d_K2);   cudaFree(d_tmp);  cudaFree(d_part);
-    free(h_part); free(xs); free(ys);
+    cudaFree(d_K1);   cudaFree(d_K2);   cudaFree(d_tmp);  cudaFree(d_s1);
+    cudaFree(d_s2);   cudaFree(d_part);
+    CUDA_CHECK(cudaFreeHost(h_part)); free(xs); free(ys);
 
     return converged ? 0 : 1;
 }
@@ -730,6 +739,7 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     double *d_U11,  *d_U12,  *d_U22;
     double *d_P11,  *d_P12,  *d_P21,  *d_P22;
     double *d_K1,   *d_K2,   *d_tmp,  *d_part;
+    double *d_s1,   *d_s2;
     int    nb_r = nblk_red(N);
 
     CUDA_CHECK(cudaMalloc(&d_rho1, sz));
@@ -744,9 +754,12 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     CUDA_CHECK(cudaMalloc(&d_K1,   sz));
     CUDA_CHECK(cudaMalloc(&d_K2,   sz));
     CUDA_CHECK(cudaMalloc(&d_tmp,  sz));
+    CUDA_CHECK(cudaMalloc(&d_s1,   sz));
+    CUDA_CHECK(cudaMalloc(&d_s2,   sz));
     CUDA_CHECK(cudaMalloc(&d_part, nb_r * sizeof(double)));
 
-    double *h_part = (double *)malloc(nb_r * sizeof(double));
+    double *h_part = NULL;
+    CUDA_CHECK(cudaMallocHost((void **)&h_part, nb_r * sizeof(double)));
 
     /* Load potential parameters onto constant cache */
     CUDA_CHECK(cudaMemcpyToSymbol(d_A, cfg->potential.A, sizeof(double)*2*2*3));
@@ -757,7 +770,6 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     k_build_pot<<<g, BLK>>>(d_U11, 0, 0, rc, Nx, Ny, dx, dy, wx, wy);
     k_build_pot<<<g, BLK>>>(d_U12, 0, 1, rc, Nx, Ny, dx, dy, wx, wy);
     k_build_pot<<<g, BLK>>>(d_U22, 1, 1, rc, Nx, Ny, dx, dy, wx, wy);
-    CUDA_CHECK(cudaDeviceSynchronize());
 
     /* Bulk Phi fields */
     double sU11 = gpu_sum(d_U11, d_part, h_part, N);
@@ -792,7 +804,6 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     CUDA_CHECK(cudaMemcpy(d_rho1, rho1, sz, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_rho2, rho2, sz, cudaMemcpyHostToDevice));
     k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
-    CUDA_CHECK(cudaDeviceSynchronize());
 
     /* Copy back for initial snapshot */
     CUDA_CHECK(cudaMemcpy(rho1, d_rho1, sz, cudaMemcpyDeviceToHost));
@@ -871,13 +882,19 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
         /* 5. Boundary -> smooth -> boundary */
         k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
 
-        k_smooth<<<g, BLK>>>(d_rho1, d_tmp, Nx, Ny, mode, SMOOTH_EPS);
-        CUDA_CHECK(cudaMemcpy(d_rho1, d_tmp, sz, cudaMemcpyDeviceToDevice));
-        k_smooth<<<g, BLK>>>(d_rho2, d_tmp, Nx, Ny, mode, SMOOTH_EPS);
-        CUDA_CHECK(cudaMemcpy(d_rho2, d_tmp, sz, cudaMemcpyDeviceToDevice));
+        k_smooth<<<g, BLK>>>(d_rho1, d_s1, Nx, Ny, mode, SMOOTH_EPS);
+        k_smooth<<<g, BLK>>>(d_rho2, d_s2, Nx, Ny, mode, SMOOTH_EPS);
+
+        {
+            double *swap = d_rho1;
+            d_rho1 = d_s1;
+            d_s1 = swap;
+            swap = d_rho2;
+            d_rho2 = d_s2;
+            d_s2 = swap;
+        }
 
         k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
-        CUDA_CHECK(cudaDeviceSynchronize());
 
         /* 6. Logging and periodic snapshots */
         io_log_convergence(log_path, iter, err);
@@ -951,8 +968,9 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
     cudaFree(d_rho1); cudaFree(d_rho2);
     cudaFree(d_U11);  cudaFree(d_U12);  cudaFree(d_U22);
     cudaFree(d_P11);  cudaFree(d_P12);  cudaFree(d_P21);  cudaFree(d_P22);
-    cudaFree(d_K1);   cudaFree(d_K2);   cudaFree(d_tmp);  cudaFree(d_part);
-    free(h_part); free(xs); free(ys);
+    cudaFree(d_K1);   cudaFree(d_K2);   cudaFree(d_tmp);  cudaFree(d_s1);
+    cudaFree(d_s2);   cudaFree(d_part);
+    CUDA_CHECK(cudaFreeHost(h_part)); free(xs); free(ys);
 
     /* Set output parameter for final error */
     if (final_error_out) {
