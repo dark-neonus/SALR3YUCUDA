@@ -68,6 +68,14 @@ def run_cmd(cmd: List[str]) -> str:
     return res.stdout.strip()
 
 
+def _to_text(data: object) -> str:
+    if data is None:
+        return ""
+    if isinstance(data, bytes):
+        return data.decode("utf-8", errors="replace")
+    return str(data)
+
+
 def get_cpu_name() -> str:
     out = run_cmd(["lscpu"])
     for line in out.splitlines():
@@ -144,7 +152,6 @@ def run_solver(
     base_cfg: Path,
     run_root: Path,
     omp_threads: int,
-    timeout_s: int,
 ) -> RunMetrics:
     output_dir = run_root / backend
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -166,13 +173,8 @@ def run_solver(
 
     start = time.perf_counter()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout_s)
-    except subprocess.TimeoutExpired as exc:
-        stdout_text = (exc.stdout or "") + "\n" + (exc.stderr or "")
-        wall_time = time.perf_counter() - start
-        ret_code = 124
-    else:
-        stdout_text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        stdout_text = _to_text(proc.stdout) + "\n" + _to_text(proc.stderr)
         wall_time = time.perf_counter() - start
         ret_code = proc.returncode
     finally:
@@ -398,7 +400,6 @@ def main() -> int:
     parser.add_argument("--cuda-exe", default="build/salr_dft_cuda", help="Path to CUDA executable")
     parser.add_argument("--output-root", default="analysis/results", help="Root directory for generated analysis")
     parser.add_argument("--omp-threads", type=int, default=os.cpu_count() or 1, help="OpenMP thread count for CPU run")
-    parser.add_argument("--timeout", type=int, default=7200, help="Timeout per solver run in seconds")
 
     args = parser.parse_args()
 
@@ -433,14 +434,14 @@ def main() -> int:
     print("=" * 72)
 
     print("\n[1/2] Running CPU (OpenMP)...")
-    cpu = run_solver("cpu", cpu_exe, cfg_path, run_root, args.omp_threads, args.timeout)
+    cpu = run_solver("cpu", cpu_exe, cfg_path, run_root, args.omp_threads)
     print(
         f"  CPU done: time={cpu.wall_time_s:.2f}s, iters={cpu.iterations}, "
         f"final_error={cpu.final_error:.3e}, converged={cpu.converged}"
     )
 
     print("\n[2/2] Running CUDA...")
-    cuda = run_solver("cuda", cuda_exe, cfg_path, run_root, args.omp_threads, args.timeout)
+    cuda = run_solver("cuda", cuda_exe, cfg_path, run_root, args.omp_threads)
     print(
         f"  CUDA done: time={cuda.wall_time_s:.2f}s, iters={cuda.iterations}, "
         f"final_error={cuda.final_error:.3e}, converged={cuda.converged}"
