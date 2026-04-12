@@ -37,7 +37,7 @@ The O(N^2) convolution is kept in direct-sum form to provide a clear baseline fo
 
 Principal function: `solver_run_binary(rho1, rho2, cfg)` -- returns 0 (converged), 1 (iteration limit), or -1 (allocation error).
 
-See `MATH.md` in this directory for a detailed mathematical derivation mapping each code section to the corresponding equations.
+See `MATH.md` in this directory for a concise solver note covering the discrete boundary conditions, convergence norm, and smoothing step.
 
 ---
 

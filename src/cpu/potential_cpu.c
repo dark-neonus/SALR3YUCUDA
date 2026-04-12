@@ -17,8 +17,6 @@ double potential_u(int i, int j, double r, const PotentialParams *p) {
 }
 
 double potential_dcf(int i, int j, double r, const PotentialParams *p) {
-    /* Direct correlation function: c_ij(r) = -beta * U_ij(r) (mean-field approx)
-     * TODO: replace with proper OZ / HNC closure if needed */
     (void)i; (void)j; (void)r; (void)p;
     return 0.0;
 }

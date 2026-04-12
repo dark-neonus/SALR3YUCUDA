@@ -258,7 +258,7 @@ project_root/
 
 Run the verification script to check integration status:
 ```bash
-./scripts/verify_db_integration.sh
+./scripts/maintenance/verify_db_integration.sh
 ```
 
 This checks:
@@ -294,7 +294,7 @@ This checks:
    - Ensures database directory creation
    - Uses `salr_dft_cuda_db` executable by default
 
-4. **`scripts/verify_db_integration.sh`**:
+4. **`scripts/maintenance/verify_db_integration.sh`**:
    - New verification script
    - Checks all integration points
    - Reports database status

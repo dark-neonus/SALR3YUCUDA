@@ -92,19 +92,16 @@ void SnapshotBrowserWidget::loadSnapshots()
         item->setText(QString("Iter %1").arg(iter));
         item->setData(Qt::UserRole, iter);
 
-        // Check thumbnail cache
         QString cacheKey = QString("%1_%2").arg(currentRunId_).arg(iter);
         if (thumbnailCache_.contains(cacheKey)) {
             item->setIcon(QIcon(thumbnailCache_[cacheKey]));
         } else {
-            // Create placeholder icon
             QPixmap placeholder(64, 64);
             placeholder.fill(Qt::lightGray);
             QPainter p(&placeholder);
             p.drawText(placeholder.rect(), Qt::AlignCenter, QString::number(iter));
             item->setIcon(QIcon(placeholder));
 
-            // Queue async thumbnail loading
             loadThumbnailAsync(iter);
         }
 
@@ -117,7 +114,6 @@ void SnapshotBrowserWidget::loadThumbnailAsync(int iteration)
     QString runId = currentRunId_;
     QString cacheKey = QString("%1_%2").arg(runId).arg(iteration);
 
-    // Use QtConcurrent to load in background
     QFutureWatcher<QImage>* watcher = new QFutureWatcher<QImage>(this);
 
     connect(watcher, &QFutureWatcher<QImage>::finished, this, [this, watcher, cacheKey, iteration]() {
@@ -128,7 +124,6 @@ void SnapshotBrowserWidget::loadThumbnailAsync(int iteration)
             QPixmap thumbnail = QPixmap::fromImage(resultImage);
             thumbnailCache_[cacheKey] = thumbnail;
 
-            // Update item if still visible
             for (int i = 0; i < listWidget_->count(); ++i) {
                 QListWidgetItem* item = listWidget_->item(i);
                 if (item->data(Qt::UserRole).toInt() == iteration) {
@@ -159,10 +154,8 @@ QImage SnapshotBrowserWidget::generateThumbnail(const SnapshotData& data, int si
     int nx = data.meta.nx;
     int ny = data.meta.ny;
 
-    // Create image
     QImage image(nx, ny, QImage::Format_RGB32);
 
-    // Compute color scale (clipped to 3x mean)
     double rho1Max = 3.0 * data.rho1Mean;
     double rho2Max = 3.0 * data.rho2Mean;
 
@@ -173,20 +166,17 @@ QImage SnapshotBrowserWidget::generateThumbnail(const SnapshotData& data, int si
             double r1 = data.rho1[idx];
             double r2 = data.rho2[idx];
 
-            // Normalize to [0, 1]
             double n1 = qBound(0.0, r1 / rho1Max, 1.0);
             double n2 = qBound(0.0, r2 / rho2Max, 1.0);
 
-            // Map to colors: species 1 = purple (R=139, B=139), species 2 = green (G=139)
             int r = static_cast<int>(139 * n1);
             int g = static_cast<int>(139 * n2);
             int b = static_cast<int>(139 * n1);
 
-            image.setPixel(ix, ny - 1 - iy, qRgb(r, g, b));  // Flip Y
+            image.setPixel(ix, ny - 1 - iy, qRgb(r, g, b));
         }
     }
 
-    // Scale to thumbnail size
     return image.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
@@ -243,7 +233,7 @@ void SnapshotBrowserWidget::onExportSnapshot()
 
     if (path.isEmpty()) return;
 
-    // TODO: Implement export using db_export_ascii
+    // TODO: Implement export using db_export_ascii.
     QMessageBox::information(this, tr("Export"),
         tr("Export functionality not yet implemented."));
 }
@@ -253,6 +243,7 @@ void SnapshotBrowserWidget::onDeleteSnapshot()
     int iteration = selectedIteration();
     if (iteration < 0) return;
 
+    // TODO: Support deleting a single snapshot from a run.
     QMessageBox::information(this, tr("Delete"),
         tr("Individual snapshot deletion not yet implemented.\n"
            "Use session deletion to remove all snapshots."));
@@ -263,8 +254,7 @@ void SnapshotBrowserWidget::onBranchFromSnapshot()
     int iteration = selectedIteration();
     if (iteration < 0) return;
 
-    // This would emit a signal to MainWindow to open the run dialog
-    // with this snapshot pre-selected
+    // TODO: Add direct branch workflow from the selected snapshot.
     QMessageBox::information(this, tr("Branch"),
         tr("Use the Run Control panel to start a new simulation\n"
            "from this snapshot."));

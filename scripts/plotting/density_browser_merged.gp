@@ -3,8 +3,8 @@
 # density_browser_merged.gp — Interactive merged-species density browser
 #
 # Usage (from project root):
-#   gnuplot scripts/density_browser_merged.gp
-#   gnuplot -e "output_dir='output'" scripts/density_browser_merged.gp
+#   gnuplot scripts/plotting/density_browser_merged.gp
+#   gnuplot -e "output_dir='output'" scripts/plotting/density_browser_merged.gp
 #
 # ── Controls ──────────────────────────────────────────────────────────────
 #   n / Right arrow       +1 frame
@@ -146,7 +146,7 @@ if (strstrt(GPVAL_TERMINALS, "wxt")) {
             print "Your gnuplot installation only has file output terminals."
             print ""
             print "SOLUTION: Use the Python visualization instead:"
-            print "  python3 scripts/plot_joint_heatmap.py output/"
+            print "  python3 scripts/plotting/plot_joint_heatmap.py output/"
             exit
         }
     }

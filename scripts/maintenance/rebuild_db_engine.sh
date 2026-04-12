@@ -3,9 +3,9 @@
 # rebuild_db_engine.sh - Rebuild the database engine and related executables
 #
 # Usage:
-#   ./scripts/rebuild_db_engine.sh           # Rebuild with database engine
-#   ./scripts/rebuild_db_engine.sh --clean   # Clean and rebuild
-#   ./scripts/rebuild_db_engine.sh --no-cuda # Build without CUDA support
+#   ./scripts/maintenance/rebuild_db_engine.sh           # Rebuild with database engine
+#   ./scripts/maintenance/rebuild_db_engine.sh --clean   # Clean and rebuild
+#   ./scripts/maintenance/rebuild_db_engine.sh --no-cuda # Build without CUDA support
 #
 
 set -e

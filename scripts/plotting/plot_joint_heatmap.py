@@ -8,8 +8,8 @@ Creates a visualization where:
   - Overlap regions appear PURPLE
 
 Usage:
-  python3 scripts/plot_joint_heatmap.py output/
-  python3 scripts/plot_joint_heatmap.py output/density_species1_iter_000500.dat output/density_species2_iter_000500.dat
+    python3 scripts/plotting/plot_joint_heatmap.py output/
+    python3 scripts/plotting/plot_joint_heatmap.py output/density_species1_iter_000500.dat output/density_species2_iter_000500.dat
 
 Output:
   PNG files with joint heatmaps showing both species.

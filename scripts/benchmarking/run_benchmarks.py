@@ -269,7 +269,7 @@ def main():
         print(f"{n}x{n:<7} | {cuda_str:<12} | {cpu1_str:<12} | {speed_str:<10}")
     
     print("-" * 60)
-    print("\nDone! Run 'python scripts/benchmark_cuda_cpu.py' to generate plots.")
+    print("\nDone! Run 'python scripts/benchmarking/benchmark_cuda_cpu.py' to generate plots.")
     
     return 0
 

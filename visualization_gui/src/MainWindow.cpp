@@ -60,11 +60,9 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUi()
 {
-    // Create main splitter (horizontal)
     mainSplitter_ = new QSplitter(Qt::Horizontal, this);
     setCentralWidget(mainSplitter_);
 
-    // Left panel: session and snapshot browsers (vertical splitter)
     leftSplitter_ = new QSplitter(Qt::Vertical);
     leftSplitter_->setMinimumWidth(280);
     leftSplitter_->setMaximumWidth(400);
@@ -79,11 +77,9 @@ void MainWindow::setupUi()
 
     mainSplitter_->addWidget(leftSplitter_);
 
-    // Center: visualization widget
     visualization_ = new VisualizationWidget(this);
     mainSplitter_->addWidget(visualization_);
 
-    // Right dock: parameters and run control
     rightDock_ = new QDockWidget(tr("Controls"), this);
     rightDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     rightDock_->setMinimumWidth(300);
@@ -101,9 +97,8 @@ void MainWindow::setupUi()
     rightDock_->setWidget(rightPanel);
     addDockWidget(Qt::RightDockWidgetArea, rightDock_);
 
-    // Set splitter proportions
-    mainSplitter_->setStretchFactor(0, 0);  // Left panel: fixed
-    mainSplitter_->setStretchFactor(1, 1);  // Visualization: stretch
+    mainSplitter_->setStretchFactor(0, 0);
+    mainSplitter_->setStretchFactor(1, 1);
 }
 
 void MainWindow::setupMenuBar()
@@ -330,7 +325,7 @@ void MainWindow::onExportSnapshot()
         return;
     }
 
-    // TODO: Implement ASCII export
+    // TODO: Implement snapshot export through the database layer.
     showMessage(tr("Export not yet implemented"));
 }
 

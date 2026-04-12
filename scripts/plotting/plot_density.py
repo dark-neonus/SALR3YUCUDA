@@ -4,9 +4,9 @@ plot_density.py — Visualise SALR DFT solver output using gnuplot.
 
 Usage
 -----
-  python3 scripts/plot_density.py output/          # final heatmaps + convergence
-  python3 scripts/plot_density.py output/density_species1_final.dat
-  python3 scripts/plot_density.py output/convergence.dat
+    python3 scripts/plotting/plot_density.py output/          # final heatmaps + convergence
+    python3 scripts/plotting/plot_density.py output/density_species1_final.dat
+    python3 scripts/plotting/plot_density.py output/convergence.dat
 
 Output
 ------

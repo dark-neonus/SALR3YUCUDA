@@ -50,7 +50,7 @@ At T = 2.0, $\beta = 0.5$, placing the system within the structured-phase region
 
 **Symptom:** At low temperatures (T < 1.5) without smoothing, the solution exhibited unphysical checkerboard oscillations and divergent density peaks.
 
-**Fix:** Re-enabled the 5-point Laplacian smoothing with $\varepsilon_s = 0.01$. This suppresses the grid-Nyquist mode while preserving physical structure at wavelengths much larger than the grid spacing. See `src/cpu/MATH.md` (section 11) for the spectral analysis.
+**Fix:** Re-enabled the 5-point Laplacian smoothing with $\varepsilon_s = 0.01$. This suppresses the grid-Nyquist mode while preserving physical structure at wavelengths much larger than the grid spacing. See `src/cpu/MATH.md` for the smoothing note.
 
 ---
 
@@ -60,7 +60,7 @@ At T = 2.0, $\beta = 0.5$, placing the system within the structured-phase region
 
 **Issue:** Only individual species heatmaps were available. The spatial anti-correlation between species, characteristic of SALR systems, could not be inspected in a single figure.
 
-**Fix:** Added `scripts/plot_joint_heatmap.py`, which produces a three-panel figure (species 1, species 2, and a combined overlay).
+**Fix:** Added `scripts/plotting/plot_joint_heatmap.py`, which produces a three-panel figure (species 1, species 2, and a combined overlay).
 
 ---
 

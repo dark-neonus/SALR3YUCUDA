@@ -7,14 +7,14 @@ The window stays open and responds to mouse rotation, zoom, and zoom-to-fit.
 
 Usage
 -----
-  python3 scripts/plot_density_3d.py output/
+    python3 scripts/plotting/plot_density_3d.py output/
         → plots density_species{1,2}_final.dat
 
-  python3 scripts/plot_density_3d.py output/density_species1_iter_001000.dat \\
+    python3 scripts/plotting/plot_density_3d.py output/density_species1_iter_001000.dat \\
                                       output/density_species2_iter_001000.dat
         → plots an arbitrary pair of files
 
-  python3 scripts/plot_density_3d.py output/density_species1_final.dat
+    python3 scripts/plotting/plot_density_3d.py output/density_species1_final.dat
         → plots a single file (one species)
 
 Requirements

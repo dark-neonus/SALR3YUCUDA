@@ -486,7 +486,7 @@ def main():
         data_file, output_dir = find_latest_benchmark()
         if not data_file:
             print("\nNo benchmark data found in analysis/results/")
-            print("Run 'python scripts/run_benchmarks.py' first to generate data.")
+            print("Run 'python scripts/benchmarking/run_benchmarks.py' first to generate data.")
             return 1
         print(f"\nAuto-detected latest benchmark: {data_file}")
     
