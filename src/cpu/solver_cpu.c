@@ -134,17 +134,43 @@ static void compute_K(const double *Phi_a,  const double *Phi_b,
     }
 }
 
-/* Cell-centered grid: no physical cell should be forced to zero at edges. */
-static void apply_boundary_mask(double *rho1, double *rho2,
-                                 int nx, int ny, int mode) {
-    (void)rho1;
-    (void)rho2;
-    (void)nx;
-    (void)ny;
-    (void)mode;
+static int is_wall_cell(int ix, int iy, int nx, int ny, int mode)
+{
+    if (mode == BC_W2) {
+        return ix == 0 || ix == nx - 1;
+    }
+    if (mode == BC_W4) {
+        return ix == 0 || ix == nx - 1 || iy == 0 || iy == ny - 1;
+    }
+    return 0;
 }
 
-/* 5-point Laplacian smoothing to suppress checkerboard instability */
+/* Cell-centered grid: all cells inside the box are physical. */
+static void apply_boundary_mask(double *rho1, double *rho2,
+                                 int nx, int ny, int mode) {
+    for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+            if (is_wall_cell(ix, iy, nx, ny, mode)) {
+                size_t k = (size_t)iy * nx + ix;
+                rho1[k] = 0.0;
+                rho2[k] = 0.0;
+            }
+        }
+    }
+}
+
+static int count_physical_cells(int nx, int ny, int mode)
+{
+    int wall_x = (mode == BC_W2 || mode == BC_W4) ? 2 : 0;
+    int wall_y = (mode == BC_W4) ? 2 : 0;
+    int phys_x = nx - wall_x;
+    int phys_y = ny - wall_y;
+    if (phys_x < 0) phys_x = 0;
+    if (phys_y < 0) phys_y = 0;
+    return phys_x * phys_y;
+}
+
+/* Mass-preserving Laplacian smoothing using only real neighbors. */
 #define SMOOTH_EPS 0.01
 
 static void smooth_density(double *rho, int nx, int ny, int mode)
@@ -164,26 +190,43 @@ static void smooth_density(double *rho, int nx, int ny, int mode)
     #pragma omp parallel for collapse(2)
     for (int iy = y_start; iy < y_end; ++iy) {
         for (int ix = x_start; ix < x_end; ++ix) {
-            int ym, yp, xm, xp;
-            if (wall_y) {
-                ym = (iy > 0) ? iy - 1 : iy;
-                yp = (iy < ny - 1) ? iy + 1 : iy;
-            } else {
-                ym = (iy - 1 + ny) % ny;
-                yp = (iy + 1) % ny;
+            double neighbor_sum = 0.0;
+            int degree = 0;
+
+            if (ix > 0) {
+                neighbor_sum += rho[iy * nx + (ix - 1)];
+                degree++;
+            } else if (!wall_x) {
+                neighbor_sum += rho[iy * nx + (nx - 1)];
+                degree++;
             }
-            if (wall_x) {
-                xm = (ix > 0) ? ix - 1 : ix;
-                xp = (ix < nx - 1) ? ix + 1 : ix;
-            } else {
-                xm = (ix - 1 + nx) % nx;
-                xp = (ix + 1) % nx;
+
+            if (ix < nx - 1) {
+                neighbor_sum += rho[iy * nx + (ix + 1)];
+                degree++;
+            } else if (!wall_x) {
+                neighbor_sum += rho[iy * nx + 0];
+                degree++;
             }
-            
-            tmp[iy*nx + ix] =
-                (1.0 - 4.0*SMOOTH_EPS) * rho[iy*nx + ix]
-                + SMOOTH_EPS * (rho[iy*nx + xm] + rho[iy*nx + xp]
-                              + rho[ym*nx + ix] + rho[yp*nx + ix]);
+
+            if (iy > 0) {
+                neighbor_sum += rho[(iy - 1) * nx + ix];
+                degree++;
+            } else if (!wall_y) {
+                neighbor_sum += rho[(ny - 1) * nx + ix];
+                degree++;
+            }
+
+            if (iy < ny - 1) {
+                neighbor_sum += rho[(iy + 1) * nx + ix];
+                degree++;
+            } else if (!wall_y) {
+                neighbor_sum += rho[0 * nx + ix];
+                degree++;
+            }
+
+            tmp[iy * nx + ix] = rho[iy * nx + ix]
+                + SMOOTH_EPS * (neighbor_sum - degree * rho[iy * nx + ix]);
         }
     }
     memcpy(rho, tmp, (size_t)(nx * ny) * sizeof(double));
@@ -204,17 +247,15 @@ double solver_l2_diff(const double *a, const double *b, size_t n) {
 /* L2 difference over all physical cells */
 static double solver_l2_diff_interior(const double *a, const double *b,
                                        int nx, int ny, int mode) {
-    int x_start = 0;
-    int x_end   = nx;
-    int y_start = 0;
-    int y_end   = ny;
-    
     double sum = 0.0;
     size_t count = 0;
     
     #pragma omp parallel for collapse(2) reduction(+:sum, count)
-    for (int iy = y_start; iy < y_end; ++iy) {
-        for (int ix = x_start; ix < x_end; ++ix) {
+    for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+            if (is_wall_cell(ix, iy, nx, ny, mode)) {
+                continue;
+            }
             size_t k = (size_t)iy * nx + ix;
             double d = a[k] - b[k];
             sum += d * d;
@@ -372,24 +413,22 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
         /* Step 2: Apply Euler-Lagrange operator */
         compute_K(Phi11, Phi12, Phi11b, Phi12b, rho1_b, beta, K1, N);
         compute_K(Phi21, Phi22, Phi21b, Phi22b, rho2_b, beta, K2, N);
+        apply_boundary_mask(K1, K2, Nx, Ny, mode);
 
         /* Step 2b: Mass renormalisation */
         {
-            int x_start = 0;
-            int x_end   = Nx;
-            int y_start = 0;
-            int y_end   = Ny;
-            
             double s1 = 0.0, s2 = 0.0;
-            size_t interior_count = 0;
+            size_t interior_count = (size_t)count_physical_cells(Nx, Ny, mode);
             
-            #pragma omp parallel for collapse(2) reduction(+:s1, s2, interior_count)
-            for (int iy = y_start; iy < y_end; ++iy) {
-                for (int ix = x_start; ix < x_end; ++ix) {
+            #pragma omp parallel for collapse(2) reduction(+:s1, s2)
+            for (int iy = 0; iy < Ny; ++iy) {
+                for (int ix = 0; ix < Nx; ++ix) {
+                    if (is_wall_cell(ix, iy, Nx, Ny, mode)) {
+                        continue;
+                    }
                     size_t k = (size_t)iy * Nx + ix;
                     s1 += K1[k];
                     s2 += K2[k];
-                    interior_count++;
                 }
             }
             
@@ -400,8 +439,11 @@ int solver_run_binary(double *rho1, double *rho2, struct SimConfig *cfg) {
                 double norm2 = target2 / s2;
                 
                 #pragma omp parallel for collapse(2)
-                for (int iy = y_start; iy < y_end; ++iy) {
-                    for (int ix = x_start; ix < x_end; ++ix) {
+                for (int iy = 0; iy < Ny; ++iy) {
+                    for (int ix = 0; ix < Nx; ++ix) {
+                        if (is_wall_cell(ix, iy, Nx, Ny, mode)) {
+                            continue;
+                        }
                         size_t k = (size_t)iy * Nx + ix;
                         K1[k] *= norm1;
                         K2[k] *= norm2;
@@ -605,24 +647,22 @@ int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
         /* Step 2: Apply Euler-Lagrange operator */
         compute_K(Phi11, Phi12, Phi11b, Phi12b, rho1_b, beta, K1, N);
         compute_K(Phi21, Phi22, Phi21b, Phi22b, rho2_b, beta, K2, N);
+        apply_boundary_mask(K1, K2, Nx, Ny, mode);
 
         /* Step 2b: Mass renormalisation */
         {
-            int x_start = 0;
-            int x_end   = Nx;
-            int y_start = 0;
-            int y_end   = Ny;
-
             double s1 = 0.0, s2 = 0.0;
-            size_t interior_count = 0;
+            size_t interior_count = (size_t)count_physical_cells(Nx, Ny, mode);
 
-            #pragma omp parallel for collapse(2) reduction(+:s1, s2, interior_count)
-            for (int iy = y_start; iy < y_end; ++iy) {
-                for (int ix = x_start; ix < x_end; ++ix) {
+            #pragma omp parallel for collapse(2) reduction(+:s1, s2)
+            for (int iy = 0; iy < Ny; ++iy) {
+                for (int ix = 0; ix < Nx; ++ix) {
+                    if (is_wall_cell(ix, iy, Nx, Ny, mode)) {
+                        continue;
+                    }
                     size_t k = (size_t)iy * Nx + ix;
                     s1 += K1[k];
                     s2 += K2[k];
-                    interior_count++;
                 }
             }
 
@@ -633,8 +673,11 @@ int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig *cfg,
                 double norm2 = target2 / s2;
 
                 #pragma omp parallel for collapse(2)
-                for (int iy = y_start; iy < y_end; ++iy) {
-                    for (int ix = x_start; ix < x_end; ++ix) {
+                for (int iy = 0; iy < Ny; ++iy) {
+                    for (int ix = 0; ix < Nx; ++ix) {
+                        if (is_wall_cell(ix, iy, Nx, Ny, mode)) {
+                            continue;
+                        }
                         size_t k = (size_t)iy * Nx + ix;
                         K1[k] *= norm1;
                         K2[k] *= norm2;

@@ -35,6 +35,27 @@ extern "C" {
 static inline int divup(int n, int d) { return (n + d - 1) / d; }
 static inline int nblk(int N) { return divup(N, BLK); }
 static inline int nblk_red(int N) { return divup(N, BLK * 2); }
+static __host__ __device__ __forceinline__ int is_wall_cell(int ix, int iy, int nx, int ny, int mode)
+{
+    if (mode == BC_W2) {
+        return ix == 0 || ix == nx - 1;
+    }
+    if (mode == BC_W4) {
+        return ix == 0 || ix == nx - 1 || iy == 0 || iy == ny - 1;
+    }
+    return 0;
+}
+
+static inline int count_interior_cells(int nx, int ny, int mode)
+{
+    int wall_x = (mode == BC_W2 || mode == BC_W4) ? 2 : 0;
+    int wall_y = (mode == BC_W4) ? 2 : 0;
+    int phys_x = nx - wall_x;
+    int phys_y = ny - wall_y;
+    if (phys_x < 0) phys_x = 0;
+    if (phys_y < 0) phys_y = 0;
+    return phys_x * phys_y;
+}
 
 /* Device: 3-Yukawa potential U(r) using constant memory */
 __constant__ double d_A[2][2][3];
@@ -163,19 +184,23 @@ __global__ void k_mix(double *rho, const double *K, double xi, int N)
     rho[i] = (1.0 - xi) * rho[i] + xi * K[i];
 }
 
-/* Cell-centered grid: no physical cell is an external wall node to be zeroed. */
+/* Cell-centered grid: all cells inside the box are physical. */
 __global__ void k_boundary(double *r1, double *r2, int nx, int ny, int mode)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id >= nx * ny) {
         return;
     }
-    (void)r1;
-    (void)r2;
-    (void)mode;
+
+    int iy = id / nx;
+    int ix = id % nx;
+    if (is_wall_cell(ix, iy, nx, ny, mode)) {
+        r1[id] = 0.0;
+        r2[id] = 0.0;
+    }
 }
 
-/* 5-point Laplacian smoothing to suppress checkerboard mode */
+/* Mass-preserving Laplacian smoothing using only real neighbors. */
 __global__ void k_smooth(
     const double *in, double *out, int nx, int ny, int mode, double eps)
 {
@@ -186,15 +211,44 @@ __global__ void k_smooth(
     int iy = id / nx, ix = id % nx;
     int wkx = (mode >= 1), wky = (mode == 2);
 
-    /* Periodic wrap or wall bounds mapping */
-    int ym = wky ? max(iy - 1, 0)      : (iy - 1 + ny) % ny;
-    int yp = wky ? min(iy + 1, ny - 1) : (iy + 1) % ny;
-    int xm = wkx ? max(ix - 1, 0)      : (ix - 1 + nx) % nx;
-    int xp = wkx ? min(ix + 1, nx - 1) : (ix + 1) % nx;
+    double neighbor_sum = 0.0;
+    int degree = 0;
 
-    out[id] = (1.0 - 4.0 * eps) * in[id]
-            + eps * (in[iy * nx + xm] + in[iy * nx + xp]
-                   + in[ym * nx + ix] + in[yp * nx + ix]);
+    /* Left/right neighbors */
+    if (ix > 0) {
+        neighbor_sum += in[iy * nx + (ix - 1)];
+        degree++;
+    } else if (!wkx) {
+        neighbor_sum += in[iy * nx + (nx - 1)];
+        degree++;
+    }
+
+    if (ix < nx - 1) {
+        neighbor_sum += in[iy * nx + (ix + 1)];
+        degree++;
+    } else if (!wkx) {
+        neighbor_sum += in[iy * nx + 0];
+        degree++;
+    }
+
+    /* Up/down neighbors */
+    if (iy > 0) {
+        neighbor_sum += in[(iy - 1) * nx + ix];
+        degree++;
+    } else if (!wky) {
+        neighbor_sum += in[(ny - 1) * nx + ix];
+        degree++;
+    }
+
+    if (iy < ny - 1) {
+        neighbor_sum += in[(iy + 1) * nx + ix];
+        degree++;
+    } else if (!wky) {
+        neighbor_sum += in[0 * nx + ix];
+        degree++;
+    }
+
+    out[id] = in[id] + eps * (neighbor_sum - degree * in[id]);
 }
 
 /* (a-b)^2 per element over all physical cells */
@@ -206,10 +260,14 @@ __global__ void k_sq_diff(
     if (id >= nx * ny) {
         return;
     }
-    (void)nx;
-    (void)ny;
-    (void)mode;
-    
+
+    int iy = id / nx;
+    int ix = id % nx;
+    if (is_wall_cell(ix, iy, nx, ny, mode)) {
+        out[id] = 0.0;
+        return;
+    }
+
     double d = a[id] - b[id];
     out[id] = d * d;
 }
@@ -239,7 +297,7 @@ __global__ void k_reduce(const double *in, double *out, int N)
     }
 }
 
-/* Reduction over all physical cells */
+/* Reduction over all physical cells. */
 __global__ void k_reduce_interior(
     const double *in, double *out, int nx, int ny, int mode)
 {
@@ -249,17 +307,23 @@ __global__ void k_reduce_interior(
     int i   = blockIdx.x * blockDim.x * 2 + tid;
     int i2  = i + blockDim.x;
 
-    double v1 = 0.0, v2 = 0.0;
-
+    double v1 = 0.0;
+    double v2 = 0.0;
     if (i < N) {
-        v1 = in[i];
+        int iy1 = i / nx;
+        int ix1 = i % nx;
+        if (!is_wall_cell(ix1, iy1, nx, ny, mode)) {
+            v1 = in[i];
+        }
     }
     if (i2 < N) {
-        v2 = in[i2];
+        int iy2 = i2 / nx;
+        int ix2 = i2 % nx;
+        if (!is_wall_cell(ix2, iy2, nx, ny, mode)) {
+            v2 = in[i2];
+        }
     }
 
-    (void)mode;
-    
     sh[tid] = v1 + v2;
     __syncthreads();
     
@@ -276,7 +340,7 @@ __global__ void k_reduce_interior(
     }
 }
 
-/* Scale all physical cells by a constant factor (mass renormalisation) */
+/* Scale all physical cells by a constant factor. */
 __global__ void k_scale_interior(
     double *data, double factor, int nx, int ny, int mode)
 {
@@ -284,11 +348,11 @@ __global__ void k_scale_interior(
     if (id >= nx * ny) {
         return;
     }
-    (void)nx;
-    (void)ny;
-    (void)mode;
-
-    data[id] *= factor;
+    int iy = id / nx;
+    int ix = id % nx;
+    if (!is_wall_cell(ix, iy, nx, ny, mode)) {
+        data[id] *= factor;
+    }
 }
 
 /* HOST HELPERS */
@@ -318,11 +382,10 @@ static double gpu_sum_interior(
     return s;
 }
 
-/* Count physical cells for cell-centered discretisation */
+/* Count all physical cells. */
 static int count_interior(int nx, int ny, int mode)
 {
-    (void)mode;
-    return nx * ny;
+    return count_interior_cells(nx, ny, mode);
 }
 
 /* Save snapshot to disk (host-side helper) */
@@ -487,6 +550,7 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
         /* 2. Euler-Lagrange operator K_i */
         k_compute_K<<<g, BLK>>>(d_P11, d_P12, Phi11b, Phi12b, rho1_b, beta, d_K1, N);
         k_compute_K<<<g, BLK>>>(d_P21, d_P22, Phi21b, Phi22b, rho2_b, beta, d_K2, N);
+        k_boundary<<<g, BLK>>>(d_K1, d_K2, Nx, Ny, mode);
 
         /* 2b. Mass renormalization */
         {
@@ -761,6 +825,7 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
         /* 2. Euler-Lagrange operator K_i */
         k_compute_K<<<g, BLK>>>(d_P11, d_P12, Phi11b, Phi12b, rho1_b, beta, d_K1, N);
         k_compute_K<<<g, BLK>>>(d_P21, d_P22, Phi21b, Phi22b, rho2_b, beta, d_K2, N);
+        k_boundary<<<g, BLK>>>(d_K1, d_K2, Nx, Ny, mode);
 
         /* 2b. Mass renormalization */
         {
