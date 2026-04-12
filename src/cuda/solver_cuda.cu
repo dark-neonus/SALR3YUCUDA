@@ -103,6 +103,8 @@ __global__ void k_compute_Phi(
     int id = blockIdx.x * blockDim.x + threadIdx.x;
     int N = nx * ny;
     int valid = (id < N);
+    const int half_nx = nx / 2;
+    const int half_ny = ny / 2;
     
     int iy = valid ? id / nx : 0;
     int ix = valid ? id % nx : 0;
@@ -123,30 +125,37 @@ __global__ void k_compute_Phi(
         
         if (valid) {
             int elems = min(BLK, N - t * BLK);
-            for (int e = 0; e < elems; ++e) {
-                int j_id = t * BLK + e;
-                int jy = j_id / nx;
-                int jx = j_id % nx;
+            int j_id0 = t * BLK;
+            int jy = j_id0 / nx;
+            int jx = j_id0 - jy * nx;
 
+            for (int e = 0; e < elems; ++e) {
                 /* distance */
                 int diy, dix;
                 if (wy) { diy = abs(iy - jy); }
-                else    { diy = (iy - jy + ny) % ny; if (diy > ny / 2) diy = ny - diy; }
+                else    { diy = (iy - jy + ny) % ny; if (diy > half_ny) diy = ny - diy; }
 
                 if (wx) { dix = abs(ix - jx); }
-                else    { dix = (ix - jx + nx) % nx; if (dix > nx / 2) dix = nx - dix; }
-                
-                if (diy == 0 && dix == 0) continue;
-                int ui = diy * nx + dix;
+                else    { dix = (ix - jx + nx) % nx; if (dix > half_nx) dix = nx - dix; }
 
-                double u11 = __ldg(&U11[ui]);
-                double u12 = __ldg(&U12[ui]);
-                double u22 = __ldg(&U22[ui]);
-                double s1  = s_r1[e];
-                double s2  = s_r2[e];
+                if (!(diy == 0 && dix == 0)) {
+                    int ui = diy * nx + dix;
 
-                p11 += s1 * u11;  p12 += s2 * u12;
-                p21 += s1 * u12;  p22 += s2 * u22;
+                    double u11 = __ldg(&U11[ui]);
+                    double u12 = __ldg(&U12[ui]);
+                    double u22 = __ldg(&U22[ui]);
+                    double s1  = s_r1[e];
+                    double s2  = s_r2[e];
+
+                    p11 += s1 * u11;  p12 += s2 * u12;
+                    p21 += s1 * u12;  p22 += s2 * u22;
+                }
+
+                ++jx;
+                if (jx == nx) {
+                    jx = 0;
+                    ++jy;
+                }
             }
         }
         __syncthreads();
@@ -173,6 +182,37 @@ __global__ void k_compute_K(
     K[i] = rho_b * exp(a);
 }
 
+/* Combined Euler-Lagrange update for both species with boundary enforcement. */
+__global__ void k_compute_K2_boundary(
+    const double *P11, const double *P12,
+    const double *P21, const double *P22,
+    double Phi11b, double Phi12b, double Phi21b, double Phi22b,
+    double rho1_b, double rho2_b, double beta,
+    double *K1, double *K2,
+    int nx, int ny, int mode)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = nx * ny;
+    if (i >= N) {
+        return;
+    }
+
+    int iy = i / nx;
+    int ix = i % nx;
+    if (is_wall_cell(ix, iy, nx, ny, mode)) {
+        K1[i] = 0.0;
+        K2[i] = 0.0;
+        return;
+    }
+
+    double a1 = -beta * (P11[i] + P12[i] - Phi11b - Phi12b);
+    double a2 = -beta * (P21[i] + P22[i] - Phi21b - Phi22b);
+    a1 = fmin(fmax(a1, -500.0), 500.0);
+    a2 = fmin(fmax(a2, -500.0), 500.0);
+    K1[i] = rho1_b * exp(a1);
+    K2[i] = rho2_b * exp(a2);
+}
+
 /* Picard mixing: ρ <- (1−ξ)·ρ + ξ·K */
 __global__ void k_mix(double *rho, const double *K, double xi, int N)
 {
@@ -182,6 +222,31 @@ __global__ void k_mix(double *rho, const double *K, double xi, int N)
     }
     /* Blend old density with newly calculated density for stabilization */
     rho[i] = (1.0 - xi) * rho[i] + xi * K[i];
+}
+
+/* Combined Picard mixing for both species with boundary enforcement. */
+__global__ void k_mix2_boundary(
+    double *rho1, double *rho2,
+    const double *K1, const double *K2,
+    double xi1, double xi2,
+    int nx, int ny, int mode)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = nx * ny;
+    if (i >= N) {
+        return;
+    }
+
+    int iy = i / nx;
+    int ix = i % nx;
+    if (is_wall_cell(ix, iy, nx, ny, mode)) {
+        rho1[i] = 0.0;
+        rho2[i] = 0.0;
+        return;
+    }
+
+    rho1[i] = (1.0 - xi1) * rho1[i] + xi1 * K1[i];
+    rho2[i] = (1.0 - xi2) * rho2[i] + xi2 * K2[i];
 }
 
 /* Cell-centered grid: all cells inside the box are physical. */
@@ -550,9 +615,12 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
             Nx, Ny, dA, wx, wy);
 
         /* 2. Euler-Lagrange operator K_i */
-        k_compute_K<<<g, BLK>>>(d_P11, d_P12, Phi11b, Phi12b, rho1_b, beta, d_K1, N);
-        k_compute_K<<<g, BLK>>>(d_P21, d_P22, Phi21b, Phi22b, rho2_b, beta, d_K2, N);
-        k_boundary<<<g, BLK>>>(d_K1, d_K2, Nx, Ny, mode);
+        k_compute_K2_boundary<<<g, BLK>>>(
+            d_P11, d_P12, d_P21, d_P22,
+            Phi11b, Phi12b, Phi21b, Phi22b,
+            rho1_b, rho2_b, beta,
+            d_K1, d_K2,
+            Nx, Ny, mode);
 
         /* 2b. Mass renormalization */
         {
@@ -591,11 +659,9 @@ extern "C" int solver_run_binary(double *rho1, double *rho2, struct SimConfig *c
         prev_err = err;
 
         /* 4. Picard mixing: ρ <- (1−ξ)ρ + ξK */
-        k_mix<<<g, BLK>>>(d_rho1, d_K1, xi1, N);
-        k_mix<<<g, BLK>>>(d_rho2, d_K2, xi2, N);
+        k_mix2_boundary<<<g, BLK>>>(d_rho1, d_rho2, d_K1, d_K2, xi1, xi2, Nx, Ny, mode);
 
-        /* 5. Boundary -> smooth -> boundary */
-        k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
+        /* 5. Smooth -> boundary */
 
         k_smooth<<<g, BLK>>>(d_rho1, d_s1, Nx, Ny, mode, SMOOTH_EPS);
         k_smooth<<<g, BLK>>>(d_rho2, d_s2, Nx, Ny, mode, SMOOTH_EPS);
@@ -834,9 +900,12 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
             Nx, Ny, dA, wx, wy);
 
         /* 2. Euler-Lagrange operator K_i */
-        k_compute_K<<<g, BLK>>>(d_P11, d_P12, Phi11b, Phi12b, rho1_b, beta, d_K1, N);
-        k_compute_K<<<g, BLK>>>(d_P21, d_P22, Phi21b, Phi22b, rho2_b, beta, d_K2, N);
-        k_boundary<<<g, BLK>>>(d_K1, d_K2, Nx, Ny, mode);
+        k_compute_K2_boundary<<<g, BLK>>>(
+            d_P11, d_P12, d_P21, d_P22,
+            Phi11b, Phi12b, Phi21b, Phi22b,
+            rho1_b, rho2_b, beta,
+            d_K1, d_K2,
+            Nx, Ny, mode);
 
         /* 2b. Mass renormalization */
         {
@@ -876,11 +945,9 @@ extern "C" int solver_run_binary_db(double *rho1, double *rho2, struct SimConfig
         prev_err = err;
 
         /* 4. Picard mixing */
-        k_mix<<<g, BLK>>>(d_rho1, d_K1, xi1, N);
-        k_mix<<<g, BLK>>>(d_rho2, d_K2, xi2, N);
+        k_mix2_boundary<<<g, BLK>>>(d_rho1, d_rho2, d_K1, d_K2, xi1, xi2, Nx, Ny, mode);
 
-        /* 5. Boundary -> smooth -> boundary */
-        k_boundary<<<g, BLK>>>(d_rho1, d_rho2, Nx, Ny, mode);
+        /* 5. Smooth -> boundary */
 
         k_smooth<<<g, BLK>>>(d_rho1, d_s1, Nx, Ny, mode, SMOOTH_EPS);
         k_smooth<<<g, BLK>>>(d_rho2, d_s2, Nx, Ny, mode, SMOOTH_EPS);
