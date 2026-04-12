@@ -233,17 +233,21 @@ void HeatmapWidget::updateTexture()
     int nx = currentData_.meta.nx;
     int ny = currentData_.meta.ny;
 
-    double rho1Max, rho2Max;
+    double rho1Min, rho1Max, rho2Min, rho2Max;
     if (colorMode_ == Clipped) {
-        rho1Max = 3.0 * currentData_.rho1Mean;
-        rho2Max = 3.0 * currentData_.rho2Mean;
+        rho1Min = currentData_.rho1Min;
+        rho2Min = currentData_.rho2Min;
+        rho1Max = qMin(currentData_.rho1Max, 3.0 * currentData_.rho1Mean);
+        rho2Max = qMin(currentData_.rho2Max, 3.0 * currentData_.rho2Mean);
     } else {
+        rho1Min = currentData_.rho1Min;
+        rho2Min = currentData_.rho2Min;
         rho1Max = currentData_.rho1Max;
         rho2Max = currentData_.rho2Max;
     }
 
-    if (rho1Max <= 0) rho1Max = 1.0;
-    if (rho2Max <= 0) rho2Max = 1.0;
+    if (rho1Max < rho1Min) rho1Max = rho1Min;
+    if (rho2Max < rho2Min) rho2Max = rho2Min;
 
     QVector<uchar> pixels(nx * ny * 4);
 
@@ -253,6 +257,10 @@ void HeatmapWidget::updateTexture()
     double c2R = species2Color_.redF();
     double c2G = species2Color_.greenF();
     double c2B = species2Color_.blueF();
+
+    const double eps = 1e-12;
+    const double rho1Span = qMax(rho1Max - rho1Min, eps);
+    const double rho2Span = qMax(rho2Max - rho2Min, eps);
 
     for (int iy = 0; iy < ny; ++iy) {
         for (int ix = 0; ix < nx; ++ix) {
@@ -264,12 +272,27 @@ void HeatmapWidget::updateTexture()
 
             double n1, n2;
             if (axisScale_ == Logarithmic) {
-                double logMin = 1e-6;
-                n1 = qBound(0.0, qLn(qMax(r1, logMin) / logMin) / qLn(rho1Max / logMin), 1.0);
-                n2 = qBound(0.0, qLn(qMax(r2, logMin) / logMin) / qLn(rho2Max / logMin), 1.0);
+                double logMin1 = qMax(1e-12, qMin(rho1Min, rho1Max));
+                double logMin2 = qMax(1e-12, qMin(rho2Min, rho2Max));
+                double logMax1 = qMax(logMin1 + 1e-12, rho1Max);
+                double logMax2 = qMax(logMin2 + 1e-12, rho2Max);
+
+                double den1 = qLn(logMax1 / logMin1);
+                double den2 = qLn(logMax2 / logMin2);
+
+                if (den1 > 1e-12) {
+                    n1 = qBound(0.0, qLn(qMax(r1, logMin1) / logMin1) / den1, 1.0);
+                } else {
+                    n1 = 0.5;
+                }
+                if (den2 > 1e-12) {
+                    n2 = qBound(0.0, qLn(qMax(r2, logMin2) / logMin2) / den2, 1.0);
+                } else {
+                    n2 = 0.5;
+                }
             } else {
-                n1 = qBound(0.0, r1 / rho1Max, 1.0);
-                n2 = qBound(0.0, r2 / rho2Max, 1.0);
+                n1 = qBound(0.0, (r1 - rho1Min) / rho1Span, 1.0);
+                n2 = qBound(0.0, (r2 - rho2Min) / rho2Span, 1.0);
             }
 
             int R = static_cast<int>(255 * (c1R * n1 + c2R * n2 * (1.0 - n1)));
