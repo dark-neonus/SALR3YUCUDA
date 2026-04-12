@@ -108,6 +108,9 @@ python scripts/run_benchmarks.py --grid-sizes 32 64 128 256 --threads 1 2 4 8
 
 # Generate publication-quality plots
 python scripts/benchmark_cuda_cpu.py
+
+# Convergence-focused comparison on real default.cfg parameters
+python scripts/performance_real_params.py
 ```
 
 Output plots (PNG + SVG at 300 DPI) are saved to `output/benchmark_plots/`:

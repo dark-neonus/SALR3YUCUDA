@@ -45,6 +45,31 @@ python3 scripts/plot_density_3d.py output/density_species1_final.dat
 
 ---
 
+## performance_real_params.py
+
+Convergence-focused CPU(OpenMP) vs CUDA comparison using physical parameters from `configs/default.cfg`.
+
+What it does:
+- Runs CPU solver with all OpenMP threads by default (`OMP_NUM_THREADS = os.cpu_count()`)
+- Runs CUDA solver with the same default physics parameters
+- Executes each run until convergence or max-iteration stop from config
+- Collects wall-time, iterations, final error, and convergence history
+- Produces presentation-ready comparison figures and CSV summary
+
+```bash
+python3 scripts/performance_real_params.py
+```
+
+Output folder: `analysis/results/real_params_cuda_vs_cpu_<timestamp>/`
+
+Key artifacts:
+- `performance_real_params.png` and `.svg` (multi-panel professional figure)
+- `metrics.csv` (machine-readable results)
+- `summary.txt` (human-readable summary)
+- `cpu/run_stdout.log`, `cuda/run_stdout.log` (full solver logs)
+
+---
+
 ## density_browser.gp
 
 Interactive frame-by-frame gnuplot density browser. Displays iteration snapshots as side-by-side 3D scatter plots and 2D heatmaps for both species and their sum. Requires gnuplot with an interactive terminal (x11, wxt, or qt).
