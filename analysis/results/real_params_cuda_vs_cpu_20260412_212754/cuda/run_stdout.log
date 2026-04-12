@@ -1,0 +1,56 @@
+=== SimConfig ===
+[grid]
+  nx=160  ny=160  dx=0.1  dy=0.1
+  Lx=16 (derived: dx*nx)  Ly=16 (derived: dy*ny)
+  boundary_mode=PBC
+[physics]
+  temperature=8  rho1=0.2  rho2=0.2  cutoff_radius=8
+[interaction] 3-Yukawa parameters (A / alpha):
+  pair 11: A1=150.6561 a1=1.923254  A2=-122.613 a2=1.26115  A3=27.11811 a3=0.75669  
+  pair 12: A1=413.5305 a1=3.405465  A2=-275.687 a2=3  A3=0 a3=1  
+  pair 22: A1=413.5305 a1=3.405465  A2=-275.687 a2=3  A3=0 a3=1  
+[solver]
+  max_iter=50000  tol=1.00e-08  xi1=0.02  xi2=0.02
+  error_change_threshold=1.00e-10  xi_damping_factor=1
+[output]
+  output_dir=/mnt/shared/Studying_2026_2/ACS/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260412_212754/cuda  save_every=100
+
+Starting Picard iteration  (tol=1.00e-08, max_iter=50000)
+
+  CUDA device: NVIDIA GeForce RTX 4060 Laptop GPU  (SM 8.9, 2250 MHz, 7807 MB)
+  Grid: 160x160 = 25600 points, 25600 interior
+  iter    100   err=1.943e-04   err_delta=8.854e-07   xi1=0.0200   xi2=0.0200   rho1[0.1063,0.2000,0.3003]  rho2[0.1220,0.2000,0.2773]
+  iter    200   err=1.288e-04   err_delta=4.896e-07   xi1=0.0200   xi2=0.0200   rho1[0.1378,0.2000,0.2706]  rho2[0.1447,0.2000,0.2507]
+  iter    300   err=8.979e-05   err_delta=3.121e-07   xi1=0.0200   xi2=0.0200   rho1[0.1568,0.2000,0.2501]  rho2[0.1605,0.2000,0.2350]
+  iter    400   err=6.400e-05   err_delta=2.130e-07   xi1=0.0200   xi2=0.0200   rho1[0.1694,0.2000,0.2356]  rho2[0.1718,0.2000,0.2247]
+  iter    500   err=4.609e-05   err_delta=1.502e-07   xi1=0.0200   xi2=0.0200   rho1[0.1780,0.2000,0.2253]  rho2[0.1799,0.2000,0.2177]
+  iter    600   err=3.335e-05   err_delta=1.075e-07   xi1=0.0200   xi2=0.0200   rho1[0.1841,0.2000,0.2180]  rho2[0.1856,0.2000,0.2128]
+  iter    700   err=2.420e-05   err_delta=7.758e-08   xi1=0.0200   xi2=0.0200   rho1[0.1885,0.2000,0.2128]  rho2[0.1897,0.2000,0.2093]
+  iter    800   err=1.758e-05   err_delta=5.618e-08   xi1=0.0200   xi2=0.0200   rho1[0.1916,0.2000,0.2092]  rho2[0.1927,0.2000,0.2067]
+  iter    900   err=1.278e-05   err_delta=4.076e-08   xi1=0.0200   xi2=0.0200   rho1[0.1939,0.2000,0.2066]  rho2[0.1948,0.2000,0.2049]
+  iter   1000   err=9.296e-06   err_delta=2.961e-08   xi1=0.0200   xi2=0.0200   rho1[0.1956,0.2000,0.2047]  rho2[0.1962,0.2000,0.2036]
+  iter   1100   err=6.765e-06   err_delta=2.153e-08   xi1=0.0200   xi2=0.0200   rho1[0.1968,0.2000,0.2034]  rho2[0.1973,0.2000,0.2026]
+  iter   1200   err=4.924e-06   err_delta=1.566e-08   xi1=0.0200   xi2=0.0200   rho1[0.1977,0.2000,0.2024]  rho2[0.1981,0.2000,0.2019]
+  iter   1300   err=3.585e-06   err_delta=1.140e-08   xi1=0.0200   xi2=0.0200   rho1[0.1983,0.2000,0.2017]  rho2[0.1986,0.2000,0.2014]
+  iter   1400   err=2.610e-06   err_delta=8.294e-09   xi1=0.0200   xi2=0.0200   rho1[0.1988,0.2000,0.2013]  rho2[0.1990,0.2000,0.2010]
+  iter   1500   err=1.900e-06   err_delta=6.038e-09   xi1=0.0200   xi2=0.0200   rho1[0.1991,0.2000,0.2009]  rho2[0.1993,0.2000,0.2007]
+  iter   1600   err=1.384e-06   err_delta=4.396e-09   xi1=0.0200   xi2=0.0200   rho1[0.1993,0.2000,0.2007]  rho2[0.1995,0.2000,0.2005]
+  iter   1700   err=1.008e-06   err_delta=3.201e-09   xi1=0.0200   xi2=0.0200   rho1[0.1995,0.2000,0.2005]  rho2[0.1996,0.2000,0.2004]
+  iter   1800   err=7.339e-07   err_delta=2.331e-09   xi1=0.0200   xi2=0.0200   rho1[0.1997,0.2000,0.2003]  rho2[0.1997,0.2000,0.2003]
+  iter   1900   err=5.345e-07   err_delta=1.697e-09   xi1=0.0200   xi2=0.0200   rho1[0.1997,0.2000,0.2003]  rho2[0.1998,0.2000,0.2002]
+  iter   2000   err=3.893e-07   err_delta=1.236e-09   xi1=0.0200   xi2=0.0200   rho1[0.1998,0.2000,0.2002]  rho2[0.1999,0.2000,0.2001]
+  iter   2100   err=2.835e-07   err_delta=9.002e-10   xi1=0.0200   xi2=0.0200   rho1[0.1999,0.2000,0.2001]  rho2[0.1999,0.2000,0.2001]
+  iter   2200   err=2.065e-07   err_delta=6.556e-10   xi1=0.0200   xi2=0.0200   rho1[0.1999,0.2000,0.2001]  rho2[0.1999,0.2000,0.2001]
+  iter   2300   err=1.504e-07   err_delta=4.775e-10   xi1=0.0200   xi2=0.0200   rho1[0.1999,0.2000,0.2001]  rho2[0.1999,0.2000,0.2001]
+  iter   2400   err=1.095e-07   err_delta=3.478e-10   xi1=0.0200   xi2=0.0200   rho1[0.1999,0.2000,0.2001]  rho2[0.2000,0.2000,0.2000]
+  iter   2500   err=7.977e-08   err_delta=2.533e-10   xi1=0.0200   xi2=0.0200   rho1[0.2000,0.2000,0.2000]  rho2[0.2000,0.2000,0.2000]
+  iter   2600   err=5.810e-08   err_delta=1.845e-10   xi1=0.0200   xi2=0.0200   rho1[0.2000,0.2000,0.2000]  rho2[0.2000,0.2000,0.2000]
+  iter   2700   err=4.232e-08   err_delta=1.344e-10   xi1=0.0200   xi2=0.0200   rho1[0.2000,0.2000,0.2000]  rho2[0.2000,0.2000,0.2000]
+  iter   2800   err=3.082e-08   err_delta=9.785e-11   xi1=0.0200   xi2=0.0200   rho1[0.2000,0.2000,0.2000]  rho2[0.2000,0.2000,0.2000]
+  iter   2900   err=2.245e-08   err_delta=7.127e-11   xi1=0.0200   xi2=0.0200   rho1[0.2000,0.2000,0.2000]  rho2[0.2000,0.2000,0.2000]
+  iter   3000   err=1.635e-08   err_delta=5.191e-11   xi1=0.0200   xi2=0.0200   rho1[0.2000,0.2000,0.2000]  rho2[0.2000,0.2000,0.2000]
+  iter   3100   err=1.191e-08   err_delta=3.781e-11   xi1=0.0200   xi2=0.0200   rho1[0.2000,0.2000,0.2000]  rho2[0.2000,0.2000,0.2000]
+  Converged at iteration 3156  (err=9.970e-09 < 1.000e-08, 87.46 s GPU)
+
+Final profiles saved to '/mnt/shared/Studying_2026_2/ACS/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260412_212754/cuda'.
+
