@@ -32,12 +32,7 @@ CTestTestfile.cmake
 _deps/
 
 # ── Output data (runtime) ─────────────────────────────────────────────────────
-output/*.dat
-output/*.csv
-output/*.bin
-output/*.log
-output/data/*
-!output/README.md
+output/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/

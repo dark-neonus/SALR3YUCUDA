@@ -8,9 +8,9 @@ The SALR DFT solver now has full database engine integration using HDF5 for effi
 
 ### Database Location
 - **Root directory**: `$PROJECT_ROOT/database/`
-- **Registry**: `database/registry.db` (SQLite database)
-- **Run directories**: `database/run_YYYYMMDD_HHMMSS_HASH/`
-- **Snapshots**: `run_*/snapshot_NNNNNN.h5` (HDF5 format)
+- **Registry**: `database/sessions.db` (SQLite database)
+- **Run directories**: `database/session_YYYYMMDD_HHMMSS_HASH/`
+- **Snapshots**: `session_*/snapshot_NNNNNN.h5` (HDF5 format)
 
 ### Integration Points
 
@@ -85,7 +85,7 @@ Both scripts:
    ↓
 4. Database structure created:
    database/
-   ├── registry.db (SQLite)
+   ├── sessions.db (SQLite)
    └── session_20260323_143052_a1b2c3d4/
        ├── snapshot_000000.h5
        ├── snapshot_001000.h5
@@ -151,10 +151,10 @@ CREATE TABLE runs (
 **Query examples**:
 ```bash
 # List all runs
-sqlite3 database/registry.db "SELECT run_id, created_at, temperature, converged FROM runs;"
+sqlite3 database/sessions.db "SELECT run_id, created_at, temperature, converged FROM sessions;"
 
 # Find converged runs at T=0.1
-sqlite3 database/registry.db "SELECT * FROM runs WHERE temperature=0.1 AND converged=1;"
+sqlite3 database/sessions.db "SELECT * FROM sessions WHERE temperature=0.1 AND converged=1;"
 ```
 
 ## Command Line Usage
@@ -219,7 +219,7 @@ sqlite3 database/registry.db "SELECT * FROM runs WHERE temperature=0.1 AND conve
 ```
 project_root/
 ├── database/                          # All simulation data
-│   ├── registry.db                   # SQLite run registry
+│   ├── sessions.db                   # SQLite run registry
 │   ├── session_20260323_143052_a1b2c3d4/
 │   │   ├── snapshot_000000.h5
 │   │   ├── snapshot_001000.h5

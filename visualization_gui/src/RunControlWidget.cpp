@@ -341,7 +341,27 @@ void RunControlWidget::onLoadFromSession()
     }
 
     SessionInfo info = database_->getSessionInfo(currentRunId_);
-    SimulationConfig config = database_->configFromSession(info);
+    
+    // We start from current config so we do not lose un-stored values
+    // like the interaction matrix and some solver parameters.
+    SimulationConfig config = buildConfig();
+    SimulationConfig sessConfig = database_->configFromSession(info);
+    
+    // Overwrite the bare minimum properties guaranteed by the SQLite database
+    config.grid = sessConfig.grid;
+    config.boundaryMode = sessConfig.boundaryMode;
+    config.temperature = sessConfig.temperature;
+    config.rho1 = sessConfig.rho1;
+    config.rho2 = sessConfig.rho2;
+
+    // Load extra params from latest snapshot if available into the config
+    SnapshotMeta meta = database_->loadMetadata(currentRunId_, -1);
+    if (meta.nx > 0) {
+        config.potential.cutoffRadius = meta.cutoffRadius;
+        config.solver.xi1 = meta.xi1;
+        config.solver.xi2 = meta.xi2;
+    }
+
     applyConfig(config);
 }
 
@@ -433,6 +453,14 @@ void RunControlWidget::applyConfig(const SimulationConfig& config)
     int bcIndex = boundaryCombo_->findData(boundaryModeToString(config.boundaryMode));
     if (bcIndex >= 0) {
         boundaryCombo_->setCurrentIndex(bcIndex);
+    }
+
+    InitialDistribution initDist = InitialDistribution::Random;
+    if (config.initMode == "sinusoids") initDist = InitialDistribution::Sinusoids;
+    else if (config.initMode == "trivial") initDist = InitialDistribution::Trivial;
+    int initIndex = initDistCombo_->findData(static_cast<int>(initDist));
+    if (initIndex >= 0) {
+        initDistCombo_->setCurrentIndex(initIndex);
     }
 
     tempSpin_->setValue(config.temperature);

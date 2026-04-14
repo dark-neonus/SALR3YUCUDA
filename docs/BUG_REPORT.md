@@ -84,3 +84,18 @@ xi1 = 0.05
 xi2 = 0.05
 tolerance = 1.0e-6
 ```
+
+---
+
+## Bug 5: GUI Config Loading Deficiencies
+
+**Component:** `visualization_gui/src/RunControlWidget.cpp` & `visualization_gui/src/DatabaseWrapper.cpp`
+
+**Symptom:** 
+1. The GUI did not fully load all default parameters. Specifically, the `init_mode` configuration parameter from `configs/default.cfg` was ignored when applying parameters to UI elements.
+2. A known issue prevented the parameters of currently viewed sessions from being fully restored. This caused advanced physics (such as interaction matrices) and solver parameters to revert to their uninitialized states, silently wiping vital data.
+
+**Fix:** 
+1. Updated `RunControlWidget::applyConfig()` to correctly parse and apply `config.initMode` to the `initDistCombo_`, ensuring `random`, `sinusoids`, and `trivial` initializations match the loaded defaults.
+2. In `RunControlWidget::onLoadFromSession()`, the logic was adjusted so that rather than producing an entirely new `SimulationConfig` (which wipes arrays like `potential.A` and `solver.maxIterations` to zeroes because the backend does not store them in SQLite or HDF5), the GUI merges the available database `SessionInfo` and `SnapshotMeta` properties on top of the currently active config (`buildConfig()`).
+3. Corrected outdated database schema documentation in `database_engine/docs/Integration_Summary.md` that incorrectly referenced `registry.db` and `run_*/` paths instead of the actual `sessions.db` and `session_*/` paths.
