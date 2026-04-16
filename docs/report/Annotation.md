@@ -4,63 +4,49 @@
 
 ### Insights
 
-#### Results depends heavily on starting distribution
-Final density distribution depends heavilu on starting distribution.
-This is well seen on example of PBC when starting random distribution produce big chaotic structures and starting with sinusoids produce diagonal stripes.
+#### Results depend heavily on the starting distribution
+The final density distribution depends strongly on the initial condition.
+For PBC runs, a random start tends to produce large chaotic structures, while a sinusoidal start more often converges to diagonal stripe patterns.
 
 #### Strange patterns at low temperatures
-At low temperatues(not starting immidiatelly, but appearing slowly proportionally to temperature) density distribution start showing point increases of distribution of species across all field, producing weird dotted results. For now we not sure if it is right behaviour or bug.
+At low temperatures, the density field can develop small point-like spikes that appear gradually as the system evolves. We are still not sure whether this is a physical effect or a numerical artifact.
 
-#### Direct approach collect error, normalization is needed, it indluence result a lot
-When we implemented integration and general algorythm, all our results after some time converged to uniform density of around 0 or produce infinity and NaN at some points of grid. We introduced normalization and Laplace smoothing to fix this problems and they helped. When changed koefficients, for example Laplace epsilon, results differ a lot. 
+#### Direct iteration accumulates error; normalization is necessary
+When we implemented the direct integration algorithm, the solution often drifted toward near-zero uniform density or produced inf and NaN values on parts of the grid. Adding normalization and Laplace smoothing fixed most of these failures, but the result is sensitive to coefficients such as the Laplace epsilon.
 
 ## Directories and files
 
 ### requirements
-Contain files connected to project scope and report requirements
+Contains files connected to the project scope and report requirements.
 
 #### Course_Requirements.md
-Contain info about requirements for project and report. Contain a lot of water but also usefull info about general idea of report.
+Contains the report and project requirements. It is verbose, but still useful for understanding the expected structure and general direction of the report.
 
 #### Project_Description.md and Project_Description.pdf
-Contain general info about projects, its scope, motivations and ways. It is first description of project given to us. You can cite this file, including in motivation or intro.
+Contain the original project description, its scope, motivation, and general goals. These are valid sources for the introduction and motivation sections.
 
 ### sources
-Contain sources that we really have read for reference
+Contains external sources that were actually read and used for reference.
 
 #### royallHuntingMermaidsSoftMatter2018.md
-Markdown version of article with same name. Not related too much to our project, but still describe same topic, same motivation. It is very good for referencing to for motivation, general concepts and practical use of theory we trying to calculate.
+Markdown version of the Royall et al. article. It is not a direct match to our implementation, but it is a strong source for the motivation, general SALR context, and the physical interpretation of the potential shape.
 
 ### SALR3YUCUDA
-Directory with report files
+Directory with report files.
 
 ##### SALR3YUCUDA.tex
-LaTeX report file. Main report file.
+Main LaTeX report file.
 
 ##### src
-Directory that contain figures, images, plots etc that can or shoudl be used in report.
+Directory with figures, plots, and supporting images used in the report.
 
-###### performance_real_params.svg
-SALR DFT Performance Analysis. Contain plots:
-- CPU(OpenMP) and CUDA Runtime Conparasion
-- CPU(OpenMP) and CUDA Iterations to Stop(same amount, show possible identity in convergence(identity should be, but this plot just dont prove it 100%))
-- CPU(OpenMP) and CUDA Final Error vs Tolerance(same)
-- CPU(OpenMP) CPU 20 threads and CUDA Convergence Trajectory(same)
+###### Mermaid_Chart.png
+SALR pair-potential illustration used in the introduction. It shows the attractive head and repulsive tail of a mermaid-style interaction and is reproduced from the Royall article. Taken from royallHuntingMermaidsSoftMatter2018.
 
-Parameters of machine that have runned this tests:
+###### PBC_2D.png
+2D heatmap for the periodic-boundary-condition case. It shows stripe-like microphase separation for the chosen parameter set.
+Runned for parameter_set_1:
 ```
-Grid: 320 x 320 (dx=0.1, dy=0.1)
-T=8.0, rho1=0.2, rho2=0.2, rc=8.0
-boundary=PBC, init=sinusoids, max_iter=50000, tol=1.0e-8
-CPU: 13th Gen Intel(R) Core(TM) i7-13700H
-GPU: NVIDIA GeForce RTX 4060 Laptop GPU
-OpenMP threads (CPU run): 20
-```
-
-###### PBC_2D.png and PBC_3D.png
-Heatmap and Scatterplot showing results of program run at parameters:
-parameter_set_1.cfg
-```cfg
 # ── Computational grid ──────────────────────────────────────────────────────
 [grid]
 dx  = 0.1                   # discretisation step along x
@@ -114,7 +100,42 @@ xi_damping_factor      = 1.0         # multiply xi by this when error stabilizes
 [output]
 output_dir = output/
 save_every = 100             # save density profile every N iterations
-
-# TODO: Add random seed as parameter
 ```
-Yellow represent species1, blue represent species2.
+
+###### PBC_3D.png
+3D scatter view of the same periodic-boundary-condition run. Yellow points represent species 1 and blue points represent species 2.
+Runned for parameter_set_1
+
+###### W2_2D.png
+2D heatmap for the two-wall boundary condition. The image shows depletion near the walls and an ordered pattern aligned with the confinement geometry.
+Runned for parameter_set_1 with boundare conditions W2.
+
+###### W2_3D.png
+3D scatter view of the two-wall boundary case. The density is concentrated between the walls and forms layered structures along the free direction.
+Runned for parameter_set_1 with boundare conditions W2.
+
+###### W4_2D.png
+2D heatmap for the four-wall confinement case. The field is depleted near all boundaries and the dense region remains mostly in the center.
+Runned for parameter_set_1 with boundare conditions W4.
+
+###### W4_3D.png
+3D scatter view of the four-wall boundary case. The result shows a compact central density structure with strong boundary depletion and corner effects.
+Runned for parameter_set_1 with boundare conditions W4.
+
+###### performance_real_params.svg
+Performance comparison figure for a realistic parameter set. It contains CPU(OpenMP) and CUDA runtime comparison, iterations to stop, final error versus tolerance, and convergence trajectories. The recorded test setup was:
+
+```text
+Grid: 320 x 320 (dx=0.1, dy=0.1)
+T=8.0, rho1=0.2, rho2=0.2, rc=8.0
+boundary=PBC, init=sinusoids, max_iter=50000, tol=1.0e-8
+CPU: 13th Gen Intel(R) Core(TM) i7-13700H
+GPU: NVIDIA GeForce RTX 4060 Laptop GPU
+OpenMP threads (CPU run): 20
+```
+
+###### speedup_analysis.svg
+Speedup-analysis figure showing how CUDA compares to CPU baselines across different thread counts. It includes CUDA speedup over CPU, CPU parallel scaling, and comparisons against 1, 2, 4, 8, 12, 16, and 20 OpenMP threads.
+
+###### placeholder.png
+Minimal placeholder image. It is used as a stand-in asset when a final GUI screenshot or another illustration is not yet available.
