@@ -23,7 +23,6 @@ src/
   core/             Configuration parser, grid initialization
   cpu/              CPU implementations (solver, potential, math)
   cuda/             GPU kernels
-  math/             Specialized math routines
   utils/            File I/O helpers
 visualization_gui/  Qt6 visualization application
   include/          Widget headers
