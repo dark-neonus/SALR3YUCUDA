@@ -60,4 +60,5 @@ docs/report/SALR3YUCUDA/*.log
 .DS_Store
 Thumbs.db
 
-database/
+database
+output/
