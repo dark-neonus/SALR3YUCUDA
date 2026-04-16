@@ -27,7 +27,7 @@ Lviv, Ukraine \\
 prokhorov.pn@ucu.edu.ua}
 \and
 \IEEEauthorblockN{Taras Patsahan}
-\IEEEauthorblockA{\textit{Institute for Condensed Matter Physics} \\
+\IEEEauthorblockA{\textit{Yukhnovskii Institute for Condensed Matter Physics} \\
 \textit{NAS of Ukraine}\\
 Lviv, Ukraine \\
 tarpa@icmp.lviv.ua}
@@ -36,7 +36,7 @@ tarpa@icmp.lviv.ua}
 \maketitle
 
 \begin{abstract}
-We present a computational framework for solving mean-field density functional theory (DFT) equations describing spatial density distributions of binary colloidal mixtures with competing short-range attraction and long-range repulsion (SALR) interactions. The solver implements the Picard iterative method for a two-component system with different walls configuration, using the triple Yukawa potential model. Our CPU implementation employs OpenMP parallelization, achieving significant speedup on multi-core processors. A robust CUDA implementation for GPUs was developed, delivering up to $\approx 40\times$ faster runtime compared to the single-threaded CPU version and a $\sim 5\times$ speedup compared to maximum OpenMP parallelization. We demonstrate the solver capabilities by computing equilibrium density profiles under periodic, two-wall, and four-wall boundary conditions. A Qt-based graphical user interface (GUI) was also built to facilitate parameter configuration, task execution, and result visualization.
+We present a computational framework for solving mean-field density functional theory (DFT) equations describing spatial density distributions of binary colloidal mixtures with competing short-range attraction and long-range repulsion (SALR) interactions. The solver implements the Picard iterative method for a two-component system with different walls configuration, using the triple Yukawa potential model. Our CPU implementation employs OpenMP parallelization, achieving significant speedup on multi-core processors. A CUDA implementation for GPUs was developed, delivering a multi-fold speedup over the CPU baseline; on the default benchmark, the GPU run was $5.87\times$ faster than a 20-thread OpenMP execution. We demonstrate the solver capabilities by computing equilibrium density profiles under periodic, two-wall, and four-wall boundary conditions. A Qt-based graphical user interface (GUI) was also built to facilitate parameter configuration, task execution, and result visualization.
 \end{abstract}
 
 %--------------------------
@@ -68,7 +68,6 @@ Particle-resolved computer simulations such as molecular dynamics (MD) and Monte
 Density functional theory offers a complementary approach that avoids these limitations. Rather than evolving individual particle positions, DFT works directly with continuous density fields $\rho_i(\mathbf{r})$, reducing an $N_p$-body statistical mechanics problem to a deterministic nonlinear integral equation solved on an $N_x \times N_y$ grid. Key advantages include:
 
 \begin{itemize}
-    \item \textbf{Speed:} A single DFT iteration costs $O(N_x^2 N_y^2)$ operations, but convergence typically requires only $10^2$--$10^4$ Picard steps, compared to $10^6$--$10^8$ MC sweeps for particle simulations of equivalent domain size.
     \item \textbf{Direct equilibrium access:} The iterative solver finds the equilibrium density profile directly without the need for thermalization or ensemble averaging inherent to stochastic simulations.
     \item \textbf{Clean boundary conditions:} Walled geometries are imposed analytically as Dirichlet constraints on $\rho_i$, avoiding surface-energy artifacts from finite particle layers.
     \item \textbf{Parameter scalability:} Changing temperature, density, or interaction coefficients requires only reinitializing the solver, enabling rapid sweeps across the phase diagram.
@@ -173,7 +172,7 @@ The most computationally expensive operation is the $O(N^2)$ convolution for com
     \item $K$-operator evaluation and Picard mixing
 \end{itemize}
 
-On a multi-core processor (Intel Core i7-13700H, 20 threads), this OpenMP parallelization achieves up to a $7\times$ speedup compared to single-threaded execution on the largest grid sizes ($150\times 150$).
+On a multi-core processor (Intel Core i7-13700H, 20 threads), this OpenMP parallelization achieves a multi-fold speedup compared to single-threaded execution on the largest grid sizes tested.
 
 \subsection{CUDA Implementation}
 
@@ -181,13 +180,7 @@ GPU acceleration explicitly targets the critical convolution operation by offloa
 
 \subsection{GUI and Session Database}
 
-The project integrates a comprehensive Qt 6-based Graphical User Interface developed for end-to-end simulation lifecycle management. Parameters such as temperature, grid shape, and boundary constraints are defined seamlessly. More essentially, the GUI wraps an underlying SQLite and HDF5 backend which ensures persistent tracking of thermodynamic constraints, density tensors over iterative runs, and allows live visual representation (heatmaps and scatter plots) directly from the persistent `.h5` artifacts, eliminating the overhead of manual data handling.
-
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/gui_placeholder.png}}
-\caption{Screenshot of the Qt Visualization GUI. The interface features parameter control, run initialization, database session browsing, and real-time visualization of density fields via heatmaps and scatter plots.}
-\label{fig:gui_screenshot}
-\end{figure}
+The project integrates a Qt 6-based graphical interface for end-to-end simulation lifecycle management. Parameters such as temperature, grid shape, and boundary constraints are configured through the GUI, while the backend stores sessions and density snapshots in SQLite and HDF5 for later inspection and reuse.
 
 %--------------------------
 \section{Results}
@@ -195,7 +188,7 @@ The project integrates a comprehensive Qt 6-based Graphical User Interface devel
 
 \subsection{Simulation Parameters}
 
-We demonstrate the solver using the parameters listed in Table~\ref{tab:params}. The temperature $T = 2.9$ places the system in a regime where microphase separation occurs, producing visible density modulations.
+We demonstrate the solver using the parameters listed in Table~\ref{tab:params}. These values match the current default configuration used by the code and the generated benchmark figures.
 
 \begin{table}[htbp]
 \caption{Simulation Parameters}
@@ -205,13 +198,14 @@ We demonstrate the solver using the parameters listed in Table~\ref{tab:params}.
 \textbf{Parameter} & \textbf{Value} \\
 \hline
 System size $L_x \times L_y$ & $16.0 \times 16.0$ \\
-Grid resolution $N_x \times N_y$ & $80 \times 80$ \\
-Grid spacing $\Delta x = \Delta y$ & $0.2$ \\
-Temperature $T$ & $2.9$ \\
+Grid resolution $N_x \times N_y$ & $160 \times 160$ \\
+Grid spacing $\Delta x = \Delta y$ & $0.1$ \\
+Temperature $T$ & $8.0$ \\
 Bulk density $\rho_{1,b}$ & $0.4$ \\
 Bulk density $\rho_{2,b}$ & $0.2$ \\
 Cutoff radius $r_c$ & $8.0$ \\
-Mixing coefficients $\xi_1 = \xi_2$ & $0.1$ \\
+Mixing coefficients $\xi_1 = \xi_2$ & $0.02$ \\
+Maximum iterations & $50000$ \\
 Tolerance $\varepsilon$ & $10^{-8}$ \\
 \hline
 \end{tabular}
@@ -223,11 +217,12 @@ The triple Yukawa coefficients for species 1--1 interaction are $A_{11}^{(1)} = 
 
 \subsection{Periodic Boundary Conditions (PBC)}
 
-Figure~\ref{fig:pbc} shows the converged density distribution under periodic boundary conditions. The system exhibits vertical stripe formation, with alternating regions of high species-1 density (purple) and high species-2 density (green). This demixing pattern reflects the competition between short-range attraction (favoring condensation) and long-range repulsion (preventing bulk separation).
+Figure~\ref{fig:pbc} shows the converged density distribution under periodic boundary conditions. The system exhibits stripe formation, with alternating regions of high species-1 density (purple) and high species-2 density (green). This demixing pattern reflects the competition between short-range attraction (favoring condensation) and long-range repulsion (preventing bulk separation).
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.95\columnwidth]{src/007_PBC.png}}
-\caption{Density distribution under periodic boundary conditions (PBC). Left: 3D scatter plot showing species 1 (purple) and species 2 (green). Right: 2D heatmap overlay. Vertical stripes indicate microphase separation with characteristic wavelength determined by competing interaction scales.}
+\centerline{\includegraphics[width=0.95\columnwidth]{src/PBC_2D.png}}
+\centerline{\includegraphics[width=0.95\columnwidth]{src/PBC_3D.png}}
+\caption{Density distribution under periodic boundary conditions (PBC). Top: 2D heatmap of the final density field. Bottom: 3D scatter view of the same run. Stripe-like modulations indicate microphase separation on the periodic domain.}
 \label{fig:pbc}
 \end{figure}
 
@@ -242,8 +237,9 @@ Figure~\ref{fig:w2} presents results for confinement between two parallel walls 
 \end{itemize}
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.95\columnwidth]{src/007_W2.png}}
-\caption{Density distribution with two-wall confinement (W2). Hard walls at $x = 0$ and $x = L_x$ induce depletion layers and reorient stripes parallel to the confining surfaces.}
+\centerline{\includegraphics[width=0.95\columnwidth]{src/W2_2D.png}}
+\centerline{\includegraphics[width=0.95\columnwidth]{src/W2_3D.png}}
+\caption{Density distribution with two-wall confinement (W2). Top: 2D heatmap showing depletion near the walls and wall-parallel modulation. Bottom: 3D scatter view of the same confined state.}
 \label{fig:w2}
 \end{figure}
 
@@ -259,21 +255,26 @@ Figure~\ref{fig:w4} shows the fully confined case with hard walls on all four bo
 \end{itemize}
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.95\columnwidth]{src/007_W4.png}}
-\caption{Density distribution with four-wall confinement (W4). Complete enclosure produces boundary depletion on all edges and concentrated density in the central region.}
+\centerline{\includegraphics[width=0.95\columnwidth]{src/W4_2D.png}}
+\centerline{\includegraphics[width=0.95\columnwidth]{src/W4_3D.png}}
+\caption{Density distribution with four-wall confinement (W4). Top: 2D heatmap showing boundary depletion on all sides and central concentration. Bottom: 3D scatter view of the same confined state.}
 \label{fig:w4}
 \end{figure}
 
 \subsection{Performance}
 
-A scalability analysis details the runtime throughput in terms of convolution evaluation per grid volume. Using a $150\times 150$ grid, the single-threaded OpenMP approach required $764$s execution time. Under maximal (20-thread) CPU allocation, time converged bounding closer to $100$s. 
-
-In sharp contrast, the corresponding execution on an NVIDIA GeForce RTX 4060 Laptop GPU achieved complete iteration to convergence in just $19.2$s. This corresponds to an aggregated speedup over $39.7\times$ against the fundamental serial baseline and a $\sim 5\times$ speed gain explicitly over full CPU thread saturation. Figure ~\ref{fig:performance} demonstrates the drastic acceleration achieved via the CUDA framework against variable OpenMP implementations.
+A scalability analysis details the runtime throughput for the default parameter set. On the $160\times 160$ grid, the 20-thread OpenMP run converged in $7647.405$s, while the CUDA version converged in $1302.876$s with the same final error and iteration count. This corresponds to a $5.87\times$ wall-time speedup for CUDA on the benchmark used in the generated figures.
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{../../analysis/results/13th_Gen_Intel_R_Core_TM_i7-13700H_NVIDIA_GeForce_RTX_4060_Laptop_GPU/speedup_analysis.png}}
-\caption{Overall Speedup (vs. single-threaded CPU runtime) corresponding to variable problem geometries ($16 \times 16$ to $150 \times 150$) emphasizing the asymptotic supremacy of execution on CUDA architecture.}
+\centerline{\includegraphics[width=\columnwidth]{src/performance_real_params.png}}
+\caption{Convergence-focused CUDA vs. CPU(OpenMP) benchmark for the default physical parameters. Both runs reach the same tolerance, but the GPU version completes substantially faster.}
 \label{fig:performance}
+\end{figure}
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/speedup_analysis.png}}
+\caption{Scaling analysis comparing CUDA speedup against CPU baselines across grid sizes and OpenMP thread counts.}
+\label{fig:speedup}
 \end{figure}
 
 %--------------------------
@@ -286,16 +287,15 @@ The observation of vertical stripes under PBC and wall-parallel stripes under W2
 
 These results support the utility of computational tools for exploring parameter space in SALR systems. As noted by Royall~\cite{royall2018}, experimental realization of predicted mesophases faces challenges including weak ion dissociation in non-aqueous solvents and non-centrosymmetric interactions. Simulations in idealized conditions allow researchers to establish baseline expectations before confronting experimental complexities.
 
-Specifically, the deployment on CUDA effectively shrinks days-long iterative experiments on large grids to mere minutes, bringing rapid exploration and phase-space sweeping into realistic ranges. While CPU cores exhibit efficiency plateaus and bounded bandwidths as cache lines overextend during grid sweeps, the CUDA architecture inherently processes continuous convolutions effectively, maintaining almost steady-state high throughput unimpacted by sequential bounds.
+Specifically, the deployment on CUDA reduces the runtime of the default benchmark from more than two hours on the 20-thread CPU run to a little over twenty minutes on the GPU. The scaling plot also shows that the GPU remains competitive as the grid size grows, while the CPU version depends more strongly on thread count and memory bandwidth.
 
 %--------------------------
 \section{Conclusion}
 %--------------------------
 
-We have presented SALR3YUCUDA, a computational solver for mean-field DFT equations describing binary SALR colloidal mixtures. The CPU implementation with OpenMP parallelization and, crucially, a highly optimized GPU accelerator in CUDA successfully compute equilibrium density distributions under various boundary conditions, demonstrating stripe and cluster formation characteristic of competing-interaction systems in fractions of previous iteration times.
+We have presented SALR3YUCUDA, a computational solver for mean-field DFT equations describing binary SALR colloidal mixtures. The CPU implementation with OpenMP parallelization and the CUDA accelerator both compute equilibrium density distributions under periodic and confined boundary conditions, capturing the stripe-like morphologies expected for competing interactions.
 
-Demonstrated benchmarks show the system effortlessly handling grids up to $150^2$, effectively outperforming parallel CPU cores by almost five-fold and single threads by $\approx 40\times$. 
-Furthermore, the integrated `.h5` backed Qt GUI serves a robust pipeline for iterative testing and on-the-fly analytical visualization of distributions.
+The current benchmark set uses the default $160\times 160$ configuration from the code base. On that case, CUDA reached convergence $5.87\times$ faster than the 20-thread CPU baseline, and the report now includes the matching convergence and scaling plots. Furthermore, the integrated Qt GUI serves as a practical pipeline for iterative testing and on-the-fly visualization of distributions.
 
 Future work will expand horizontally along several vectors including:
 \begin{itemize}

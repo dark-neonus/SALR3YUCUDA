@@ -139,3 +139,9 @@ Speedup-analysis figure showing how CUDA compares to CPU baselines across differ
 
 ###### placeholder.png
 Minimal placeholder image. It is used as a stand-in asset when a final GUI screenshot or another illustration is not yet available.
+
+
+<!-- TODO: Add starting conditions visualization -->
+<!-- TODO: Add example of result with different starting conditions -->
+<!-- TODO: Add image of out GUI -->
+<!-- TODO: Add more information about performance and performance comparasion -->
