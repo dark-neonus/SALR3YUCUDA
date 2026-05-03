@@ -32,7 +32,6 @@ CTestTestfile.cmake
 _deps/
 
 # ── Output data (runtime) ─────────────────────────────────────────────────────
-output/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
@@ -60,5 +59,14 @@ docs/report/SALR3YUCUDA/*.log
 .DS_Store
 Thumbs.db
 
-database
+# ── Database (runtime) ─────────────────────────────────────────────
+database/
 output/
+
+# ── Analysis results: ignore generated plots/summaries, keep data files ──
+# .dat, .log, .csv, _info.txt in analysis/results/ are primary results — tracked
+analysis/results/**/*.png
+analysis/results/**/*.svg
+analysis/results/**/comparison_summary.txt
+
+*_.*
