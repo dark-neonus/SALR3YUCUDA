@@ -1,0 +1,10 @@
+SALR DFT Benchmark Results
+============================================================
+Date: 2026-05-03T20:48:32.654218
+CPU: AMD EPYC 9754 128-Core Processor
+  Cores: 256
+GPU: No NVIDIA GPU detected
+Grid sizes: [16, 32, 64, 128, 160]
+Thread counts: [1, 2, 4, 8, 16, 32, 64]
+Max iterations: 1000
+Repeats per test: 3

@@ -1,0 +1,10 @@
+SALR DFT Benchmark Results
+============================================================
+Date: 2026-05-03T21:39:04.756466
+CPU: AMD Ryzen Threadripper PRO 5975WX 32-Cores
+  Cores: 32
+GPU: NVIDIA GeForce RTX 5090, 32607 MiB
+Grid sizes: [16, 32, 64, 128, 160, 256, 320]
+Thread counts: [1, 2, 4, 8, 12, 16, 20]
+Max iterations: 1000
+Repeats per test: 3

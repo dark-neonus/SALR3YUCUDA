@@ -1,0 +1,10 @@
+SALR DFT Benchmark Results
+============================================================
+Date: 2026-05-03T01:28:57.978146
+CPU: AMD Ryzen Threadripper PRO 5975WX 32-Cores
+  Cores: 32
+GPU: No devices were found
+Grid sizes: [16, 32, 64, 128, 160]
+Thread counts: [1, 2, 4, 8, 16]
+Max iterations: 1000
+Repeats per test: 3

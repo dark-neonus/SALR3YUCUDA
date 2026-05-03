@@ -1,0 +1,3 @@
+backend,wall_time_s,gpu_solver_time_s,iterations,final_error,tolerance,converged,return_code,omp_threads,output_dir,stdout_log
+cpu,461.406602,,3156,9.970000000000e-09,1.000000000000e-08,1,0,20,/mnt/shared/Studying_2026_2/ACS/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260502_212517/cpu,/mnt/shared/Studying_2026_2/ACS/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260502_212517/cpu/run_stdout.log
+cuda,89.574028,87.540000,3156,9.970000000000e-09,1.000000000000e-08,1,0,,/mnt/shared/Studying_2026_2/ACS/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260502_212517/cuda,/mnt/shared/Studying_2026_2/ACS/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260502_212517/cuda/run_stdout.log

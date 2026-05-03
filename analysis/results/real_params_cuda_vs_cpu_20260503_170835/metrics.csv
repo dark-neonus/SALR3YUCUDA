@@ -1,0 +1,3 @@
+backend,wall_time_s,gpu_solver_time_s,iterations,final_error,tolerance,converged,return_code,omp_threads,output_dir,stdout_log
+cpu,4005.248972,,3156,9.970000000000e-09,1.000000000000e-08,1,0,1,/scratch/users/nazarp/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260503_170835/cpu,/scratch/users/nazarp/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260503_170835/cpu/run_stdout.log
+cuda,56.530558,55.930000,3156,9.970000000000e-09,1.000000000000e-08,1,0,,/scratch/users/nazarp/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260503_170835/cuda,/scratch/users/nazarp/SALR3YUCUDA/analysis/results/real_params_cuda_vs_cpu_20260503_170835/cuda/run_stdout.log

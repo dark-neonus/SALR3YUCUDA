@@ -1,0 +1,10 @@
+SALR DFT Benchmark Results
+============================================================
+Date: 2026-05-03T22:33:49.916447
+CPU: 13th Gen Intel(R) Core(TM) i7-13700H
+  Cores: 20
+GPU: NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB
+Grid sizes: [16, 32, 64, 128, 160, 256, 320]
+Thread counts: [1, 2, 4, 8, 12, 16, 20]
+Max iterations: 1000
+Repeats per test: 3
