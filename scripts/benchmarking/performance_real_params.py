@@ -19,7 +19,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -103,6 +102,17 @@ def replace_output_dir(cfg_text: str, output_dir: Path) -> str:
     return cfg_text + f"\n[output]\n{replacement}\n"
 
 
+def enforce_init_mode(cfg_text: str, mode: str = "sinusoids") -> str:
+    """Ensure init_mode is set to *mode* for reproducible benchmarks."""
+    replacement = f"init_mode = {mode}"
+    if re.search(r"^\s*init_mode\s*=", cfg_text, flags=re.MULTILINE):
+        return re.sub(r"^\s*init_mode\s*=.*$", replacement, cfg_text, count=1, flags=re.MULTILINE)
+    # Key not present — append it under [grid] if that section exists, else append at end
+    if re.search(r"^\[grid\]", cfg_text, flags=re.MULTILINE):
+        return re.sub(r"(^\[grid\][^\[]*)", r"\1" + replacement + "\n", cfg_text, count=1, flags=re.MULTILINE | re.DOTALL)
+    return cfg_text + f"\n{replacement}\n"
+
+
 def parse_stdout_metrics(stdout_text: str) -> Tuple[Optional[int], Optional[float], Optional[float], bool]:
     converged = "converged" in stdout_text.lower()
 
@@ -157,11 +167,12 @@ def run_solver(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cfg_text = base_cfg.read_text(encoding="utf-8")
-    temp_cfg_text = replace_output_dir(cfg_text, output_dir)
+    final_cfg_text = replace_output_dir(cfg_text, output_dir)
+    final_cfg_text = enforce_init_mode(final_cfg_text, "sinusoids")
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=f"_{backend}.cfg", delete=False) as tf:
-        tf.write(temp_cfg_text)
-        temp_cfg_path = Path(tf.name)
+    # Save the exact config used so the user can verify init_mode and all settings.
+    input_cfg_path = output_dir / "input_used.cfg"
+    input_cfg_path.write_text(final_cfg_text, encoding="utf-8")
 
     env = os.environ.copy()
     if backend == "cpu":
@@ -169,19 +180,13 @@ def run_solver(
         env["OMP_PROC_BIND"] = "true"
         env["OMP_PLACES"] = "cores"
 
-    cmd = [str(executable), str(temp_cfg_path)]
+    cmd = [str(executable), str(input_cfg_path)]
 
     start = time.perf_counter()
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-        stdout_text = _to_text(proc.stdout) + "\n" + _to_text(proc.stderr)
-        wall_time = time.perf_counter() - start
-        ret_code = proc.returncode
-    finally:
-        try:
-            temp_cfg_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    stdout_text = _to_text(proc.stdout) + "\n" + _to_text(proc.stderr)
+    wall_time = time.perf_counter() - start
+    ret_code = proc.returncode
 
     stdout_log = output_dir / "run_stdout.log"
     stdout_log.write_text(stdout_text, encoding="utf-8")
