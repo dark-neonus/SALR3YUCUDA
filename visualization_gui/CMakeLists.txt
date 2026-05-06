@@ -33,6 +33,7 @@ set(GUI_SOURCES
     src/ConfigEditorDialog.cpp
     src/SnapshotSelectorDialog.cpp
     src/SimulationRunner.cpp
+    src/HeadlessController.cpp
 )
 
 set(GUI_HEADERS
@@ -49,6 +50,7 @@ set(GUI_HEADERS
     include/ConfigEditorDialog.h
     include/SnapshotSelectorDialog.h
     include/SimulationRunner.h
+    include/HeadlessController.h
 )
 
 # Create executable

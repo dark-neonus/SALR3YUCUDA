@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QColor>
+#include <QString>
 #include "Types.h"
 
 namespace salr {
@@ -26,6 +27,8 @@ public:
     explicit VisualizationWidget(QWidget* parent = nullptr);
 
     void setSnapshotData(const SnapshotData& data);
+
+    bool exportVisuals(const QString& path, QString* scatterPath = nullptr, QString* heatmapPath = nullptr);
 
     QColor species1Color() const { return species1Color_; }
     QColor species2Color() const { return species2Color_; }

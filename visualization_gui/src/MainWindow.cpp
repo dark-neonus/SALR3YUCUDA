@@ -22,8 +22,8 @@
 
 namespace salr {
 
-MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent)
+MainWindow::MainWindow(const QString& databasePath, QWidget* parent)
+    : QMainWindow(parent), databasePath_(databasePath)
 {
     setWindowTitle(tr("SALR DFT Visualization"));
     setMinimumSize(1200, 800);
@@ -240,7 +240,9 @@ void MainWindow::loadSettings()
     restoreGeometry(settings.value("geometry").toByteArray());
     restoreState(settings.value("windowState").toByteArray());
 
-    databasePath_ = settings.value("databasePath").toString();
+    if (databasePath_.isEmpty()) {
+        databasePath_ = settings.value("databasePath").toString();
+    }
 
     if (mainSplitter_) {
         mainSplitter_->restoreState(settings.value("mainSplitter").toByteArray());

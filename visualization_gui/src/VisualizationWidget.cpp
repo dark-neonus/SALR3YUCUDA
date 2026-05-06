@@ -10,6 +10,10 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QColorDialog>
+#include <QDir>
+#include <QFileInfo>
+#include <QImage>
+#include <QPainter>
 
 namespace salr {
 
@@ -151,6 +155,69 @@ void VisualizationWidget::setSnapshotData(const SnapshotData& data)
 {
     scatterPlot_->setSnapshotData(data);
     heatmap_->setSnapshotData(data);
+}
+
+bool VisualizationWidget::exportVisuals(const QString& path, QString* scatterPath, QString* heatmapPath)
+{
+    if (path.trimmed().isEmpty()) {
+        return false;
+    }
+
+    QFileInfo info(path);
+    QString scatterOut;
+    QString heatmapOut;
+    QString combinedOut;
+
+    if (info.suffix().isEmpty()) {
+        QDir dir(path);
+        if (!dir.exists() && !dir.mkpath(".")) {
+            return false;
+        }
+        scatterOut = dir.filePath("scatter.png");
+        heatmapOut = dir.filePath("heatmap.png");
+        combinedOut = dir.filePath("combined.png");
+    } else {
+        QString baseName = info.completeBaseName();
+        QDir dir(info.path().isEmpty() ? "." : info.path());
+        if (!dir.exists() && !dir.mkpath(".")) {
+            return false;
+        }
+        scatterOut = dir.filePath(baseName + "_scatter.png");
+        heatmapOut = dir.filePath(baseName + "_heatmap.png");
+        combinedOut = dir.filePath(info.fileName());
+    }
+
+    QImage scatterImage = scatterPlot_->renderToImage();
+    QImage heatmapImage = heatmap_->renderToImage();
+
+    if (scatterImage.isNull() || heatmapImage.isNull()) {
+        return false;
+    }
+
+    int combinedWidth = scatterImage.width() + heatmapImage.width();
+    int combinedHeight = qMax(scatterImage.height(), heatmapImage.height());
+    QImage combined(combinedWidth, combinedHeight, QImage::Format_ARGB32);
+    combined.fill(Qt::white);
+
+    QPainter painter(&combined);
+    painter.drawImage(0, 0, scatterImage);
+    painter.drawImage(scatterImage.width(), 0, heatmapImage);
+    painter.end();
+
+    if (!scatterImage.save(scatterOut) || !heatmapImage.save(heatmapOut)) {
+        return false;
+    }
+    if (!combinedOut.isEmpty() && !combined.save(combinedOut)) {
+        return false;
+    }
+
+    if (scatterPath) {
+        *scatterPath = scatterOut;
+    }
+    if (heatmapPath) {
+        *heatmapPath = heatmapOut;
+    }
+    return true;
 }
 
 void VisualizationWidget::onThresholdChanged(int value)

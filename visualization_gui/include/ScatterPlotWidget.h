@@ -13,7 +13,10 @@
 #include <QMatrix4x4>
 #include <QVector3D>
 #include <QColor>
+#include <QImage>
 #include "Types.h"
+
+class QPainter;
 
 namespace salr {
 
@@ -38,6 +41,9 @@ public:
 
     void resetView();
 
+    QImage renderToImage();
+    bool saveImage(const QString& path);
+
 signals:
     void thresholdChanged(double threshold);
     void pointSizeChanged(float size);
@@ -55,6 +61,8 @@ private:
     void updateVertexData();
     void drawAxes();
     void updateProjection();
+    void drawAxisOverlay(QPainter& painter, const QMatrix4x4& mvp) const;
+    bool projectToScreen(const QVector3D& pos, const QMatrix4x4& mvp, QPointF& out) const;
 
     SnapshotData currentData_;
     double threshold_ = 0.01;

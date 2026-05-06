@@ -30,7 +30,7 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(const QString& databasePath = QString(), QWidget* parent = nullptr);
     ~MainWindow();
 
 protected:

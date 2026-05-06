@@ -1,6 +1,6 @@
 # SALR3YUCUDA
 
-Numerical solver for mean-field Density Functional Theory (DFT) equations describing spatial density distributions in two-component SALR (Short-Range Attraction, Long-Range Repulsion) colloidal systems with Triple Yukawa pair potentials. Developed for the "Architecture of Computer Systems" course.
+Numerical solver for mean-field Density Functional Theory (DFT) equations describing spatial density distributions in two-component SALR (Short-Range Attraction, Long-Range Repulsion) colloidal systems with Three-Yukawa pair potentials. Developed for the "Architecture of Computer Systems" course.
 
 ## Overview
 
@@ -96,6 +96,29 @@ Launch with:
 # or
 ./build/salr_dft_gui
 ```
+
+## Headless CLI (Visualization)
+
+The visualization app also supports a headless CLI mode for automation and report rendering. Use it with Qt offscreen rendering:
+
+```bash
+./build/visualization_gui/salr_gui \
+  --headless \
+  --database database \
+  --config configs/default.cfg \
+  --backend cuda \
+  --width 1400 --height 900 \
+  -platform offscreen
+```
+
+Commands (stdin):
+
+- `OPEN_SESSION <session_id>`
+- `LOAD_SNAPSHOT <iteration|latest>`
+- `EXPORT_VISUALS <path>` (directory or base path; writes *_scatter.png and *_heatmap.png)
+- `QUIT`
+
+Machine-readable logs are printed to stdout, including `CLI_INIT` with the full parameter set, `CLI_SESSION_STARTED` with the session ID, and `CLI_SNAPSHOT_WRITTEN` for each stored snapshot.
 
 ## Benchmarking
 

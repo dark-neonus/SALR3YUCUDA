@@ -7,6 +7,8 @@
 #include <QWheelEvent>
 #include <QtMath>
 #include <QDebug>
+#include <QPainter>
+#include <QFontMetrics>
 
 namespace salr {
 
@@ -210,6 +212,23 @@ void ScatterPlotWidget::resetView()
     update();
 }
 
+QImage ScatterPlotWidget::renderToImage()
+{
+    if (!isValid()) {
+        return QImage();
+    }
+    return grabFramebuffer();
+}
+
+bool ScatterPlotWidget::saveImage(const QString& path)
+{
+    QImage image = renderToImage();
+    if (image.isNull()) {
+        return false;
+    }
+    return image.save(path);
+}
+
 void ScatterPlotWidget::initializeGL()
 {
     initializeOpenGLFunctions();
@@ -373,6 +392,10 @@ void ScatterPlotWidget::paintGL()
     axesVao_.release();
 
     shaderProgram_->release();
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    drawAxisOverlay(painter, mvp);
 }
 
 void ScatterPlotWidget::updateVertexData()
@@ -479,6 +502,85 @@ void ScatterPlotWidget::wheelEvent(QWheelEvent* event)
     zoom_ *= qPow(1.1f, delta);
     zoom_ = qBound(0.1f, zoom_, 10.0f);
     update();
+}
+
+bool ScatterPlotWidget::projectToScreen(const QVector3D& pos, const QMatrix4x4& mvp, QPointF& out) const
+{
+    QVector4D clip = mvp * QVector4D(pos, 1.0f);
+    if (qFuzzyIsNull(clip.w())) {
+        return false;
+    }
+
+    QVector3D ndc = clip.toVector3DAffine();
+    if (ndc.z() < -1.0f || ndc.z() > 1.0f) {
+        return false;
+    }
+
+    float x = (ndc.x() * 0.5f + 0.5f) * width_;
+    float y = (1.0f - (ndc.y() * 0.5f + 0.5f)) * height_;
+    out = QPointF(x, y);
+    return true;
+}
+
+void ScatterPlotWidget::drawAxisOverlay(QPainter& painter, const QMatrix4x4& mvp) const
+{
+    if (!currentData_.isValid()) {
+        return;
+    }
+
+    const int tickCount = 5;
+    const QColor axisX(255, 80, 80);
+    const QColor axisY(80, 200, 120);
+    const QColor axisZ(120, 160, 255);
+
+    QFont font = painter.font();
+    font.setPointSize(9);
+    painter.setFont(font);
+
+    auto drawAxisTicks = [&](const QString& label,
+                             const QColor& color,
+                             const QVector3D& base,
+                             const QVector3D& dir,
+                             float minVal,
+                             float maxVal) {
+        if (tickCount < 2) {
+            return;
+        }
+
+        painter.setPen(color);
+
+        for (int i = 0; i < tickCount; ++i) {
+            float t = static_cast<float>(i) / static_cast<float>(tickCount - 1);
+            float value = minVal + (maxVal - minVal) * t;
+            QVector3D pos = base + dir * t;
+
+            QPointF screen;
+            if (!projectToScreen(pos, mvp, screen)) {
+                continue;
+            }
+
+            QPointF tickStart = screen + QPointF(-3.0, 0.0);
+            QPointF tickEnd = screen + QPointF(3.0, 0.0);
+            painter.drawLine(tickStart, tickEnd);
+
+            QString text = QString::number(value, 'g', 3);
+            painter.drawText(screen + QPointF(6.0, -4.0), text);
+        }
+
+        QPointF endPoint;
+        if (projectToScreen(base + dir, mvp, endPoint)) {
+            painter.drawText(endPoint + QPointF(8.0, -6.0), label);
+        }
+    };
+
+    QVector3D base(xMin_, yMin_, zMin_);
+    QVector3D xDir(xMax_ - xMin_, 0.0f, 0.0f);
+    QVector3D yDir(0.0f, yMax_ - yMin_, 0.0f);
+    QVector3D zDir(0.0f, 0.0f, zMax_ - zMin_);
+
+    drawAxisTicks("x", axisX, base, xDir, xMin_, xMax_);
+    drawAxisTicks("y", axisY, base, yDir, yMin_, yMax_);
+    drawAxisTicks("rho", axisZ, base, zDir, zMin_, zMax_);
 }
 
 } // namespace salr

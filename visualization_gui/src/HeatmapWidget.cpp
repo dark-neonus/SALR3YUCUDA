@@ -126,6 +126,23 @@ void HeatmapWidget::setSpecies2Color(const QColor& color)
     }
 }
 
+QImage HeatmapWidget::renderToImage()
+{
+    if (!isValid()) {
+        return QImage();
+    }
+    return grabFramebuffer();
+}
+
+bool HeatmapWidget::saveImage(const QString& path)
+{
+    QImage image = renderToImage();
+    if (image.isNull()) {
+        return false;
+    }
+    return image.save(path);
+}
+
 void HeatmapWidget::initializeGL()
 {
     initializeOpenGLFunctions();

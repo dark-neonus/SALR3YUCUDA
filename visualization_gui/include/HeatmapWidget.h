@@ -12,6 +12,7 @@
 #include <QOpenGLShaderProgram>
 #include <QOpenGLTexture>
 #include <QColor>
+#include <QImage>
 #include "Types.h"
 
 namespace salr {
@@ -45,6 +46,9 @@ public:
     void setSpecies2Color(const QColor& color);
     QColor species1Color() const { return species1Color_; }
     QColor species2Color() const { return species2Color_; }
+
+    QImage renderToImage();
+    bool saveImage(const QString& path);
 
 signals:
     void cursorPosition(double x, double y, double rho1, double rho2);

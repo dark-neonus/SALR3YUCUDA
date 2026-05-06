@@ -181,7 +181,7 @@ endif()
 # Qt Visualization GUI
 # =============================================================================
 
-option(BUILD_GUI "Build Qt visualization GUI" OFF)
+option(BUILD_GUI "Build Qt visualization GUI" ON)
 
 if(BUILD_GUI)
     if(HAVE_DB_ENGINE)
