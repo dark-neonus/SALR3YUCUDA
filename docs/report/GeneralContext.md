@@ -14,6 +14,8 @@ It is your responcibility to track images relativity and up-to-dateness. If some
 
 All images/figures used in report should be placced/copied into: docs/report/SALR3YUCUDA/src
 
+Dont use long dashes if they are not strictrly needed(like in the abstract). Try to avoid them and you use them, use minus sign "-" instead.
+
 ## Notes
 
 We desided to not use triple-Yukawa potential, and instead use three-Yukawa potential. Comply with it in future and if you see this mistake presented, fix it.
