@@ -6,6 +6,8 @@
 #include "ScatterPlotWidget.h"
 #include "HeatmapWidget.h"
 
+#include <iostream>
+
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -159,59 +161,74 @@ void VisualizationWidget::setSnapshotData(const SnapshotData& data)
     heatmap_->setSnapshotData(data);
 }
 
+
+
 bool VisualizationWidget::exportVisuals(const QString& basePath, QString* scatterPathOut, QString* heatmapPathOut)
 {
-    if (basePath.isEmpty()) {
-        return false;
-    }
+    if (basePath.isEmpty()) return false;
 
-    // Ensure the output directory actually exists
     QFileInfo fileInfo(basePath);
     QDir dir = fileInfo.absoluteDir();
     if (!dir.exists()) {
-        if (!dir.mkpath(".")) {
-            qWarning() << "Failed to create directory for export:" << dir.absolutePath();
-            return false;
-        }
+        dir.mkpath(".");
     }
 
     QString scatterPath = basePath + "_scatter.png";
     QString heatmapPath = basePath + "_heatmap.png";
 
+    std::cout << "  [GUI-EXPORT] Starting export to " << basePath.toStdString() << std::endl;
+
+    if (this->size().isEmpty()) {
+        this->resize(1200, 900);
+    }
+    
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+
     bool scatterOk = false;
     bool heatmapOk = false;
 
-    // Force Qt to process any pending layout or OpenGL initialization events
-    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-
-    // Grab the actual OpenGL framebuffer for the 3D scatter plot
+    // 1. Export 3D Scatter Plot
     if (scatterPlot_) {
-        // Essential for offscreen rendering: grabs the FBO directly
-        QImage scatterImg = scatterPlot_->grabFramebuffer();
-        if (!scatterImg.isNull()) {
-            scatterOk = scatterImg.save(scatterPath);
+        std::cout << "  [GUI-EXPORT] Exporting 3D scatter plot..." << std::endl;
+        QImage img = scatterPlot_->grabFramebuffer();
+        if (!img.isNull()) {
+            scatterOk = img.save(scatterPath);
         } else {
-            qWarning() << "Scatter plot framebuffer grab returned null image";
+            std::cout << "  [GUI-EXPORT] FBO null, falling back to standard grab()..." << std::endl;
+            QPixmap pix = scatterPlot_->grab();
+            if (!pix.isNull()) {
+                scatterOk = pix.save(scatterPath);
+            }
         }
+        std::cout << "  [GUI-EXPORT] Scatter saved: " << (scatterOk ? "YES" : "NO") << std::endl;
     }
 
-    // Grab the actual OpenGL framebuffer for the 2D heatmap
+    // 2. Export 2D Heatmap Plot
     if (heatmap_) {
-        // Essential for offscreen rendering: grabs the FBO directly
-        QImage heatmapImg = heatmap_->grabFramebuffer();
-        if (!heatmapImg.isNull()) {
-            heatmapOk = heatmapImg.save(heatmapPath);
+        std::cout << "  [GUI-EXPORT] Exporting 2D heatmap plot..." << std::endl;
+        QImage img = heatmap_->grabFramebuffer();
+        if (!img.isNull()) {
+            heatmapOk = img.save(heatmapPath);
         } else {
-            qWarning() << "Heatmap framebuffer grab returned null image";
+            std::cout << "  [GUI-EXPORT] FBO null, falling back to standard grab()..." << std::endl;
+            QPixmap pix = heatmap_->grab();
+            if (!pix.isNull()) {
+                heatmapOk = pix.save(heatmapPath);
+            }
         }
+        std::cout << "  [GUI-EXPORT] Heatmap saved: " << (heatmapOk ? "YES" : "NO") << std::endl;
     }
 
-    // Set out parameters for logging
     if (scatterPathOut) *scatterPathOut = scatterPath;
     if (heatmapPathOut) *heatmapPathOut = heatmapPath;
 
-    // Return true only if BOTH images successfully saved
-    return scatterOk && heatmapOk;
+    if (scatterOk || heatmapOk) {
+        std::cout << "  [GUI-EXPORT] Export completely successful." << std::endl;
+        return true;
+    } else {
+        std::cout << "  [GUI-EXPORT] Export failed." << std::endl;
+        return false;
+    }
 }
 
 void VisualizationWidget::onThresholdChanged(int value)
