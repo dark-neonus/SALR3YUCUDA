@@ -70,3 +70,5 @@ analysis/results/**/*.svg
 analysis/results/**/comparison_summary.txt
 
 *_.*
+
+*.synctex.gz

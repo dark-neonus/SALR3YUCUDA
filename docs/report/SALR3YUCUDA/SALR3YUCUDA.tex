@@ -27,7 +27,7 @@ Lviv, Ukraine \\
 prokhorov.pn@ucu.edu.ua}
 \and
 \IEEEauthorblockN{Taras Patsahan}
-\IEEEauthorblockA{\textit{Yukhnovskii Institute for Condensed Matter Physics} \\
+\IEEEauthorblockA{\textit{Yukhnovskii Institute for Condensed Matter Physics,} \\
 \textit{NAS of Ukraine}\\
 Lviv, Ukraine \\
 tarpa@icmp.lviv.ua}
@@ -36,14 +36,15 @@ tarpa@icmp.lviv.ua}
 \maketitle
 
 \begin{abstract}
-We present a computational framework for solving mean-field density functional theory (DFT) equations describing spatial density distributions of binary colloidal mixtures with competing short-range attraction and long-range repulsion (SALR) interactions. The solver implements the Picard iterative method for a two-component system with different walls configuration, using the triple Yukawa potential model. Our CPU implementation employs OpenMP parallelization, achieving significant speedup on multi-core processors. A CUDA implementation for GPUs was developed, delivering a multi-fold speedup over the CPU baseline; on the default benchmark, the GPU run was $5.87\times$ faster than a 20-thread OpenMP execution. We demonstrate the solver capabilities by computing equilibrium density profiles under periodic, two-wall, and four-wall boundary conditions. A Qt-based graphical user interface (GUI) was also built to facilitate parameter configuration, task execution, and result visualization.
+We present a computational framework for solving mean-field density functional theory (DFT) equations for spatial density distributions in binary colloidal mixtures with competing short-range attraction and long-range repulsion (SALR) interactions. The SALR pair potential is represented by a three-Yukawa form. The solver implements the Picard iterative procedure for a two-component system under different boundary conditions. Our CPU implementation employs OpenMP parallelization, achieving significant speedup on multi-core processors. A CUDA implementation for GPUs was developed, delivering a multi-fold speedup over the CPU baseline; on the default benchmark, the GPU run was $5.87\times$ faster than a 20-thread OpenMP execution. We demonstrate the solver capabilities by computing equilibrium density profiles under periodic, two-wall, and four-wall boundary conditions. A Qt-based graphical user interface (GUI) was also built to facilitate parameter configuration, task execution, and result visualization.
 \end{abstract}
 
 %--------------------------
 \section{Introduction}
 %--------------------------
-
-Colloidal systems provide important models for studying fundamental phenomena in condensed matter physics, including phase transitions, self-assembly, and complex fluid behavior~\cite{royall2018}. Among the most intriguing colloidal systems are those exhibiting competing interactions, where particles experience short-range attraction and long-range repulsion (SALR). These interactions, sometimes called ``mermaid'' potentials due to their attractive head and repulsive tail~\cite{royall2018}, lead to rich phase behavior including microphase separation, cluster formation, and periodic stripe patterns~\cite{liu2019}. Figure~\ref{fig:mermaid} illustrates a typical SALR potential profile, with the short-range attractive well (``head'') followed by a long-range repulsive barrier (``tail'').
+Colloidal systems are an important class of soft-matter systems widely used for studying fundamental phenomena such as phase transitions, self-assembly, and the behaviour of complex fluids~\cite{royall2018}. Particularly intriguing are colloidal systems in which the pair interactions are competing in nature, combining short-range attraction with long-range repulsion (SALR)..
+These interactions, sometimes referred to as ``mermaid'' potentials because of their attractive head and repulsive tail~\cite{royall2018}.  
+Systems of particles with SALR interactions can undergo microphase separation, giving rise to rich phase behaviour and mesoscopic structures such as ordered clusters and periodic stripe patterns~\cite{liu2019}. Figure~\ref{fig:mermaid} illustrates a typical SALR potential profile, with the short-range attractive well (``head'') followed by a long-range repulsive barrier (``tail'').
 
 \begin{figure}[htbp]
 \centerline{\includegraphics[width=0.85\columnwidth]{src/Mermaid_Chart.png}}
@@ -51,13 +52,11 @@ Colloidal systems provide important models for studying fundamental phenomena in
 \label{fig:mermaid}
 \end{figure}
 
+Despite significant theoretical progress in predicting the behaviour of SALR systems, the experimental realization of the predicted mesophases in three-dimensional real space remains challenging. As Royall notes, ``no ordered phase in a system with competing interactions has ever been observed in 3d real space''~\cite{royall2018}. This gap between theory and experiment motivates the development of efficient computational tools that allow researchers to explore parameter space rapidly and identify conditions under which specific morphologies may emerge.
 
+Theoretical descriptions of spatial density distributions in SALR systems are commonly based on density functional theory (DFT) within the mean-field approximation~\cite{hansen2013}. This approach leads to a system of nonlinear integral equations that must be solved iteratively. For a two-dimensional grid of $N_x \times N_y$ nodes, the computational cost per iteration scales as $O(N^2)$ due to the convolution required to compute interaction fields, making the problem computationally intensive.
 
-Despite significant theoretical predictions about SALR systems, experimental realization of the predicted mesophases in three-dimensional real space remains challenging. As Royall notes, ``no ordered phase in a system with competing interactions has ever been observed in 3d real space''~\cite{royall2018}. This gap between theory and experiment motivates the development of efficient computational tools that allow researchers to explore parameter space rapidly and identify conditions under which specific morphologies may emerge.
-
-The theoretical description of spatial density distributions in SALR systems is commonly performed using density functional theory (DFT) within the mean-field approximation~\cite{hansen2013}. This approach leads to a system of nonlinear integral equations that must be solved iteratively. For a two-dimensional grid of $N_x \times N_y$ nodes, the computational cost per iteration scales as $O(N^2)$ due to the convolution required to compute interaction fields, making the problem computationally intensive.
-
-In this work, we present SALR3YUCUDA - a solver for mean-field DFT equations describing binary SALR mixtures. The project name reflects its key components: SALR (Short-range Attraction Long-range Repulsion), 3Y (triple Yukawa potential), and CUDA (GPU acceleration technology). We implemented an optimized pure C version with OpenMP parallelization for scalable execution on multi-core processors, accompanied by a highly parallelized CUDA framework for GPU-accelerated massive parameter computations. The solvers natively integrate with an SQLite-HDF5 database for session tracking and large spatial tensor storage, and feature multiple boundary conditions including periodic boundaries (PBC), two parallel walls (W2), and four-wall confinement (W4). Furthermore, a Qt-based graphical interface enables rich visual exploration without cumbersome command-line workflows.
+In this work, we present SALR3YUCUDA, a computational solver for mean-field DFT equations describing spatial density distributions in binary mixtures of SALR particles. The project name reflects its key components: SALR (Short-range Attraction Long-range Repulsion), 3Y (three-Yukawa potential), and CUDA (GPU acceleration technology). We implemented an optimized pure C version with OpenMP parallelization for scalable execution on multi-core processors, accompanied by a highly parallelized CUDA framework for GPU-accelerated massive parameter computations. The solvers natively integrate with an SQLite-HDF5 database for session tracking and large spatial tensor storage, and feature multiple boundary conditions including periodic boundaries (PBC), two parallel walls (W2), and four-wall confinement (W4). Furthermore, a Qt-based graphical interface enables rich visual exploration without cumbersome command-line workflows.
 
 \subsection{Motivation}
 
