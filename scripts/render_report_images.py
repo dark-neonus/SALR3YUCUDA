@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
-"""
-Generate report images using the headless visualization GUI.
-Iterates over boundary conditions and initialization modes as specified in the report.
-"""
-
 import argparse
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 def load_config_lines(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines(keepends=True)
 
 def write_config(path: Path, lines: list[str], boundary: str, init_mode: str) -> None:
-    """Updates the config lines with specific boundary and init modes."""
     in_grid = False
     boundary_set = False
     init_set = False
     updated = []
 
     for line in lines:
+        # Strip inline comments to prevent Qt QSettings parsing errors
+        if '#' in line and not line.lstrip().startswith('#'):
+            line = line.split('#')[0].rstrip() + '\n'
+
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             in_grid = stripped.lower() == "[grid]"
@@ -43,17 +40,16 @@ def write_config(path: Path, lines: list[str], boundary: str, init_mode: str) ->
 
     path.write_text("".join(updated), encoding="utf-8")
 
-def run_headless_render(gui_exe: Path, db_path: Path, cfg_path: Path, backend: str, output_name: Path):
-    """Launches the GUI in headless mode, runs simulation, and exports images."""
+def run_headless_render(gui_exe: Path, db_path: Path, cfg_path: Path, backend: str, output_base: Path):
+    # Ensure the solver is in the PATH or the same dir as GUI
+    # We pass the absolute path to the database to avoid ambiguity
     cmd = [
         str(gui_exe),
         "--headless",
         "-platform", "offscreen",
-        "--database", str(db_path),
-        "--config", str(cfg_path),
+        "--database", str(db_path.absolute()),
+        "--config", str(cfg_path.absolute()),
         "--backend", backend,
-        "--width", "1200",
-        "--height", "900"
     ]
 
     print(f"Running: {' '.join(cmd)}")
@@ -66,92 +62,77 @@ def run_headless_render(gui_exe: Path, db_path: Path, cfg_path: Path, backend: s
         bufsize=1
     )
 
+    session_started = False
     run_id = None
+
     try:
-        # 1. Wait for session start
         for line in process.stdout:
-            print(f"  [GUI] {line.strip()}")
-            if "CLI_SESSION_STARTED" in line:
-                # Extract run_id (expected format: CLI_SESSION_STARTED run_id=XYZ)
-                parts = line.strip().split("run_id=")
-                if len(parts) > 1:
-                    run_id = parts[1]
-                break
-        
-        if not run_id:
-            print("  Error: Failed to get run_id from GUI")
-            process.terminate()
-            return False
+            clean_line = line.strip()
+            print(f"  [GUI] {clean_line}")
 
-        # 2. Wait for simulation completion
-        for line in process.stdout:
-            print(f"  [GUI] {line.strip()}")
-            if "CLI_SIMULATION_FINISHED" in line:
-                break
-        
-        # 3. Request Export
-        print(f"  Requesting export to: {output_name}")
-        process.stdin.write(f"EXPORT_VISUALS {output_name}\n")
-        process.stdin.flush()
+            if "CLI_SESSION_STARTED" in clean_line:
+                session_started = True
+                # Try to parse run_id
+                if "run_id=" in clean_line:
+                    run_id = clean_line.split("run_id=")[1].split()[0]
 
-        # 4. Wait for export confirmation then quit
-        for line in process.stdout:
-            print(f"  [GUI] {line.strip()}")
-            if "CLI_VISUALS_EXPORTED" in line:
+            if "CLI_SESSION_FINISHED" in clean_line:
+                if "run_id=starting" in clean_line or "converged=false" in clean_line:
+                    # If it finished without converging or starting, it likely crashed
+                    if not session_started:
+                        print("  Error: Solver failed to start (Check if salr_dft_cuda_db exists in build folder)")
+                        process.kill()
+                        return False
+                
+                # If we get here, simulation is "done" (either converged or hit max iter)
+                print(f"  Simulation complete. Exporting to {output_base}...")
+                process.stdin.write(f"EXPORT_VISUALS {output_base.absolute()}\n")
+                process.stdin.flush()
+
+            if "CLI_VISUALS_EXPORTED" in clean_line:
+                print("  Export successful. Quitting.")
                 process.stdin.write("QUIT\n")
                 process.stdin.flush()
                 break
 
-        process.wait(timeout=10)
+        process.wait(timeout=5)
         return True
-
     except Exception as e:
-        print(f"  Process Error: {e}")
+        print(f"  Exception: {e}")
         process.kill()
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description="Batch render report images.")
-    parser.add_argument("--gui", default="build/visualization_gui/salr_gui", help="Path to GUI executable")
-    parser.add_argument("--database", default="database", help="Path to database directory")
-    parser.add_argument("--config", default="configs/default.cfg", help="Base config file")
-    parser.add_argument("--output", default="docs/report/SALR3YUCUDA/src", help="Output directory for images")
-    parser.add_argument("--backend", default="cuda", choices=["cpu", "cuda"], help="Compute backend")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--backend", default="cuda")
     args = parser.parse_args()
 
+    # Setup paths relative to script location
     root = Path(__file__).resolve().parents[1]
-    gui_exe = (root / args.gui).resolve()
-    db_path = (root / args.database).resolve()
-    base_cfg = (root / args.config).resolve()
-    out_dir = (root / args.output).resolve()
-    workdir = (root / "output/report_configs").resolve()
+    gui_exe = root / "build/visualization_gui/salr_gui"
+    db_path = root / "database"
+    base_cfg = root / "configs/default.cfg"
+    out_dir = root / "docs/report/SALR3YUCUDA/src"
+    workdir = root / "output/report_configs"
 
     out_dir.mkdir(parents=True, exist_ok=True)
     workdir.mkdir(parents=True, exist_ok=True)
 
-    # Scenarios defined in the report 
     scenarios = [
         {"name": "rep_pbc", "boundary": "PBC", "init": "sinusoids"},
         {"name": "rep_w2",  "boundary": "W2",  "init": "sinusoids"},
         {"name": "rep_w4",  "boundary": "W4",  "init": "sinusoids"},
     ]
 
-    config_lines = load_config_lines(base_cfg)
+    lines = load_config_lines(base_cfg)
 
     for sc in scenarios:
-        print(f"\n>>> Generating: {sc['name']} ({sc['boundary']}, {sc['init']})")
-        
+        print(f"\n>>> Case: {sc['name']}")
         cfg_path = workdir / f"{sc['name']}.cfg"
-        write_config(cfg_path, config_lines, sc['boundary'], sc['init'])
+        write_config(cfg_path, lines, sc['boundary'], sc['init'])
         
-        # The GUI will append _scatter.png and _heatmap.png to this base path
         output_base = out_dir / sc['name']
-        
-        success = run_headless_render(gui_exe, db_path, cfg_path, args.backend, output_base)
-        if not success:
-            print(f"!!! Failed to generate {sc['name']}")
-
-    print("\nBatch processing complete.")
+        run_headless_render(gui_exe, db_path, cfg_path, args.backend, output_base)
 
 if __name__ == "__main__":
     main()

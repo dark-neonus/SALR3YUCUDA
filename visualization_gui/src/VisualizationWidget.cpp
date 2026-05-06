@@ -14,6 +14,8 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QPainter>
+#include <QCoreApplication>
+#include <QEventLoop>
 
 namespace salr {
 
@@ -157,67 +159,59 @@ void VisualizationWidget::setSnapshotData(const SnapshotData& data)
     heatmap_->setSnapshotData(data);
 }
 
-bool VisualizationWidget::exportVisuals(const QString& path, QString* scatterPath, QString* heatmapPath)
+bool VisualizationWidget::exportVisuals(const QString& basePath, QString* scatterPathOut, QString* heatmapPathOut)
 {
-    if (path.trimmed().isEmpty()) {
+    if (basePath.isEmpty()) {
         return false;
     }
 
-    QFileInfo info(path);
-    QString scatterOut;
-    QString heatmapOut;
-    QString combinedOut;
-
-    if (info.suffix().isEmpty()) {
-        QDir dir(path);
-        if (!dir.exists() && !dir.mkpath(".")) {
+    // Ensure the output directory actually exists
+    QFileInfo fileInfo(basePath);
+    QDir dir = fileInfo.absoluteDir();
+    if (!dir.exists()) {
+        if (!dir.mkpath(".")) {
+            qWarning() << "Failed to create directory for export:" << dir.absolutePath();
             return false;
         }
-        scatterOut = dir.filePath("scatter.png");
-        heatmapOut = dir.filePath("heatmap.png");
-        combinedOut = dir.filePath("combined.png");
-    } else {
-        QString baseName = info.completeBaseName();
-        QDir dir(info.path().isEmpty() ? "." : info.path());
-        if (!dir.exists() && !dir.mkpath(".")) {
-            return false;
+    }
+
+    QString scatterPath = basePath + "_scatter.png";
+    QString heatmapPath = basePath + "_heatmap.png";
+
+    bool scatterOk = false;
+    bool heatmapOk = false;
+
+    // Force Qt to process any pending layout or OpenGL initialization events
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+
+    // Grab the actual OpenGL framebuffer for the 3D scatter plot
+    if (scatterPlot_) {
+        // Essential for offscreen rendering: grabs the FBO directly
+        QImage scatterImg = scatterPlot_->grabFramebuffer();
+        if (!scatterImg.isNull()) {
+            scatterOk = scatterImg.save(scatterPath);
+        } else {
+            qWarning() << "Scatter plot framebuffer grab returned null image";
         }
-        scatterOut = dir.filePath(baseName + "_scatter.png");
-        heatmapOut = dir.filePath(baseName + "_heatmap.png");
-        combinedOut = dir.filePath(info.fileName());
     }
 
-    QImage scatterImage = scatterPlot_->renderToImage();
-    QImage heatmapImage = heatmap_->renderToImage();
-
-    if (scatterImage.isNull() || heatmapImage.isNull()) {
-        return false;
+    // Grab the actual OpenGL framebuffer for the 2D heatmap
+    if (heatmap_) {
+        // Essential for offscreen rendering: grabs the FBO directly
+        QImage heatmapImg = heatmap_->grabFramebuffer();
+        if (!heatmapImg.isNull()) {
+            heatmapOk = heatmapImg.save(heatmapPath);
+        } else {
+            qWarning() << "Heatmap framebuffer grab returned null image";
+        }
     }
 
-    int combinedWidth = scatterImage.width() + heatmapImage.width();
-    int combinedHeight = qMax(scatterImage.height(), heatmapImage.height());
-    QImage combined(combinedWidth, combinedHeight, QImage::Format_ARGB32);
-    combined.fill(Qt::white);
+    // Set out parameters for logging
+    if (scatterPathOut) *scatterPathOut = scatterPath;
+    if (heatmapPathOut) *heatmapPathOut = heatmapPath;
 
-    QPainter painter(&combined);
-    painter.drawImage(0, 0, scatterImage);
-    painter.drawImage(scatterImage.width(), 0, heatmapImage);
-    painter.end();
-
-    if (!scatterImage.save(scatterOut) || !heatmapImage.save(heatmapOut)) {
-        return false;
-    }
-    if (!combinedOut.isEmpty() && !combined.save(combinedOut)) {
-        return false;
-    }
-
-    if (scatterPath) {
-        *scatterPath = scatterOut;
-    }
-    if (heatmapPath) {
-        *heatmapPath = heatmapOut;
-    }
-    return true;
+    // Return true only if BOTH images successfully saved
+    return scatterOk && heatmapOk;
 }
 
 void VisualizationWidget::onThresholdChanged(int value)

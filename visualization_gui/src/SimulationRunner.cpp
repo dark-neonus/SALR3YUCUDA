@@ -12,19 +12,28 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
+#include <QProcessEnvironment>
 
 namespace salr {
 
 SimulationRunner::SimulationRunner(QObject* parent)
     : QObject(parent)
 {
+    process_ = new QProcess(this);
+    process_->setProcessChannelMode(QProcess::MergedChannels);
+
+    connect(process_, &QProcess::started, this, &SimulationRunner::onProcessStarted);
+    connect(process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &SimulationRunner::onProcessFinished);
+    connect(process_, &QProcess::errorOccurred, this, &SimulationRunner::onProcessError);
+    
+    // Connect to the formally declared slot
+    connect(process_, &QProcess::readyReadStandardOutput, this, &SimulationRunner::onProcessReadyRead);
 }
 
 SimulationRunner::~SimulationRunner()
 {
     stop();
-
-    // Clean up temp config file
     if (!tempConfigPath_.isEmpty() && QFile::exists(tempConfigPath_)) {
         QFile::remove(tempConfigPath_);
     }
@@ -41,7 +50,6 @@ void SimulationRunner::startNew(const SimulationConfig& config, bool useCuda)
     resumeIteration_ = -1;
     lastConverged_ = false;
 
-    // Generate temp config file
     tempConfigPath_ = QDir::temp().filePath(
         QString("salr_config_%1.cfg").arg(QDateTime::currentMSecsSinceEpoch()));
 
@@ -50,47 +58,25 @@ void SimulationRunner::startNew(const SimulationConfig& config, bool useCuda)
         return;
     }
 
-    // Find executable
     QString executable = findExecutable(useCuda);
     if (executable.isEmpty()) {
         emit errorOccurred(tr("Simulation executable not found"));
         return;
     }
 
-    // Build command
-    QStringList args;
-    args << tempConfigPath_;
-
-    // Setup process
-    process_ = new QProcess(this);
-
-    connect(process_, &QProcess::started,
-            this, &SimulationRunner::onProcessStarted);
-    connect(process_, &QProcess::readyReadStandardOutput,
-            this, &SimulationRunner::onProcessReadyRead);
-    connect(process_, &QProcess::readyReadStandardError,
-            this, &SimulationRunner::onProcessReadyRead);
-    connect(process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &SimulationRunner::onProcessFinished);
-    connect(process_, &QProcess::errorOccurred,
-            this, &SimulationRunner::onProcessError);
-
-    // Set environment
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    if (!databasePath_.isEmpty()) {
-        env.insert("SALR_DB_PATH", databasePath_);
-    }
+    QString exeDir = QFileInfo(executable).absolutePath();
+    QString currentLd = env.value("LD_LIBRARY_PATH");
+    env.insert("LD_LIBRARY_PATH", currentLd.isEmpty() ? exeDir : currentLd + ":" + exeDir);
     process_->setProcessEnvironment(env);
-
-    // Set working directory
     process_->setWorkingDirectory(QDir::currentPath());
 
-    qDebug() << "Starting simulation:" << executable << args;
+    QStringList args;
+    args << tempConfigPath_;
     process_->start(executable, args);
 }
 
-void SimulationRunner::resume(const QString& runId, int iteration,
-                               const SimulationConfig& config, bool useCuda)
+void SimulationRunner::resume(const QString& runId, int iteration, const SimulationConfig& config, bool useCuda)
 {
     if (isRunning()) {
         emit errorOccurred(tr("A simulation is already running"));
@@ -101,7 +87,6 @@ void SimulationRunner::resume(const QString& runId, int iteration,
     resumeIteration_ = iteration;
     lastConverged_ = false;
 
-    // Generate temp config file
     tempConfigPath_ = QDir::temp().filePath(
         QString("salr_config_%1.cfg").arg(QDateTime::currentMSecsSinceEpoch()));
 
@@ -110,261 +95,37 @@ void SimulationRunner::resume(const QString& runId, int iteration,
         return;
     }
 
-    // Find executable
     QString executable = findExecutable(useCuda);
     if (executable.isEmpty()) {
         emit errorOccurred(tr("Simulation executable not found"));
         return;
     }
 
-    // Build command with resume args
-    QStringList args;
-    args << tempConfigPath_;
-    args << "--resume" << runId;
-    if (iteration >= 0) {
-        args << QString::number(iteration);
-    }
-
-    // Setup process
-    process_ = new QProcess(this);
-
-    connect(process_, &QProcess::started,
-            this, &SimulationRunner::onProcessStarted);
-    connect(process_, &QProcess::readyReadStandardOutput,
-            this, &SimulationRunner::onProcessReadyRead);
-    connect(process_, &QProcess::readyReadStandardError,
-            this, &SimulationRunner::onProcessReadyRead);
-    connect(process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &SimulationRunner::onProcessFinished);
-    connect(process_, &QProcess::errorOccurred,
-            this, &SimulationRunner::onProcessError);
-
-    // Set environment
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    if (!databasePath_.isEmpty()) {
-        env.insert("SALR_DB_PATH", databasePath_);
-    }
+    QString exeDir = QFileInfo(executable).absolutePath();
+    QString currentLd = env.value("LD_LIBRARY_PATH");
+    env.insert("LD_LIBRARY_PATH", currentLd.isEmpty() ? exeDir : currentLd + ":" + exeDir);
     process_->setProcessEnvironment(env);
+    process_->setWorkingDirectory(QDir::currentPath());
 
-    qDebug() << "Resuming simulation:" << executable << args;
+    QStringList args;
+    args << tempConfigPath_ << "--resume" << runId << QString::number(iteration);
     process_->start(executable, args);
 }
 
 void SimulationRunner::stop()
 {
-    if (process_ && process_->state() != QProcess::NotRunning) {
+    if (isRunning()) {
         process_->terminate();
-
         if (!process_->waitForFinished(3000)) {
             process_->kill();
-            process_->waitForFinished(1000);
         }
-    }
-
-    if (process_) {
-        process_->deleteLater();
-        process_ = nullptr;
     }
 }
 
 bool SimulationRunner::isRunning() const
 {
     return process_ && process_->state() != QProcess::NotRunning;
-}
-
-void SimulationRunner::onProcessStarted()
-{
-    qDebug() << "Simulation process started";
-
-    // We don't know the run ID yet until we parse output
-    // For resume, we use the known run ID
-    if (!resumeRunId_.isEmpty()) {
-        currentRunId_ = resumeRunId_;
-    } else {
-        currentRunId_ = "starting...";
-    }
-
-    emit started(currentRunId_);
-}
-
-void SimulationRunner::onProcessReadyRead()
-{
-    if (!process_) return;
-
-    // Read stdout
-    while (process_->canReadLine()) {
-        QByteArray line = process_->readLine();
-        QString text = QString::fromUtf8(line).trimmed();
-        if (!text.isEmpty()) {
-            emit outputLine(text);
-            parseOutputLine(text);
-        }
-    }
-
-    // Also read any remaining data
-    QByteArray remaining = process_->readAllStandardOutput();
-    if (!remaining.isEmpty()) {
-        for (const QString& line : QString::fromUtf8(remaining).split('\n')) {
-            QString text = line.trimmed();
-            if (!text.isEmpty()) {
-                emit outputLine(text);
-                parseOutputLine(text);
-            }
-        }
-    }
-
-    // Read stderr
-    remaining = process_->readAllStandardError();
-    if (!remaining.isEmpty()) {
-        for (const QString& line : QString::fromUtf8(remaining).split('\n')) {
-            QString text = line.trimmed();
-            if (!text.isEmpty()) {
-                emit outputLine("[stderr] " + text);
-            }
-        }
-    }
-}
-
-void SimulationRunner::onProcessFinished(int exitCode, QProcess::ExitStatus status)
-{
-    qDebug() << "Simulation finished with code" << exitCode << "status" << status;
-
-    // Clean up temp file
-    if (!tempConfigPath_.isEmpty() && QFile::exists(tempConfigPath_)) {
-        QFile::remove(tempConfigPath_);
-        tempConfigPath_.clear();
-    }
-
-    const bool converged = lastConverged_ || (status == QProcess::NormalExit && exitCode == 0);
-    emit finished(converged, currentRunId_);
-
-    process_->deleteLater();
-    process_ = nullptr;
-    currentRunId_.clear();
-}
-
-void SimulationRunner::onProcessError(QProcess::ProcessError error)
-{
-    QString errorMsg;
-    switch (error) {
-        case QProcess::FailedToStart:
-            errorMsg = tr("Failed to start simulation process");
-            break;
-        case QProcess::Crashed:
-            errorMsg = tr("Simulation process crashed");
-            break;
-        case QProcess::Timedout:
-            errorMsg = tr("Simulation process timed out");
-            break;
-        case QProcess::WriteError:
-            errorMsg = tr("Error writing to simulation process");
-            break;
-        case QProcess::ReadError:
-            errorMsg = tr("Error reading from simulation process");
-            break;
-        default:
-            errorMsg = tr("Unknown process error");
-            break;
-    }
-
-    emit errorOccurred(errorMsg);
-}
-
-bool SimulationRunner::writeConfigFile(const SimulationConfig& config, const QString& path)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return false;
-    }
-
-    QTextStream out(&file);
-    out.setRealNumberPrecision(10);
-
-    // Grid section
-    out << "[grid]\n";
-    out << "dx = " << config.grid.dx << "\n";
-    out << "dy = " << config.grid.dy << "\n";
-    out << "nx = " << config.grid.nx << "\n";
-    out << "ny = " << config.grid.ny << "\n";
-    out << "boundary_mode = " << boundaryModeToString(config.boundaryMode) << "\n";
-    out << "init_mode = " << config.initMode << "\n";
-    out << "\n";
-
-    // Physics section
-    out << "[physics]\n";
-    out << "temperature = " << config.temperature << "\n";
-    out << "rho1 = " << config.rho1 << "\n";
-    out << "rho2 = " << config.rho2 << "\n";
-    out << "cutoff_radius = " << config.potential.cutoffRadius << "\n";
-    out << "\n";
-
-    // Interaction section (use defaults if not set)
-    out << "[interaction]\n";
-    for (int i = 0; i < 2; ++i) {
-        for (int j = i; j < 2; ++j) {
-            for (int m = 0; m < 3; ++m) {
-                out << QString("A_%1%2_%3 = ").arg(i+1).arg(j+1).arg(m+1)
-                    << config.potential.A[i][j][m] << "\n";
-            }
-            for (int m = 0; m < 3; ++m) {
-                out << QString("a_%1%2_%3 = ").arg(i+1).arg(j+1).arg(m+1)
-                    << config.potential.alpha[i][j][m] << "\n";
-            }
-        }
-    }
-    out << "\n";
-
-    // Solver section
-    out << "[solver]\n";
-    out << "max_iterations = " << config.solver.maxIterations << "\n";
-    out << "tolerance = " << config.solver.tolerance << "\n";
-    out << "xi1 = " << config.solver.xi1 << "\n";
-    out << "xi2 = " << config.solver.xi2 << "\n";
-    out << "error_change_threshold = " << config.solver.errorChangeThreshold << "\n";
-    out << "xi_damping_factor = " << config.solver.xiDampingFactor << "\n";
-    out << "\n";
-
-    // Output section
-    out << "[output]\n";
-    out << "output_dir = " << config.outputDir << "\n";
-    out << "save_every = " << config.saveEvery << "\n";
-
-    return true;
-}
-
-void SimulationRunner::parseOutputLine(const QString& line)
-{
-    // Parse run ID from "Session: session_YYYYMMDD_HHMMSS_hash"
-    static QRegularExpression sessionRe(R"(Session:\s*(\S+))");
-    QRegularExpressionMatch sessionMatch = sessionRe.match(line);
-    if (sessionMatch.hasMatch()) {
-        currentRunId_ = sessionMatch.captured(1);
-        emit started(currentRunId_);
-    }
-
-    // Parse iteration progress
-    // Format: "Iteration NNNN: error = X.XXXe-YY, delta = X.XXXe-YY"
-    static QRegularExpression iterRe(R"(Iteration\s+(\d+):\s+error\s*=\s*([\d.eE+-]+)(?:,\s*delta\s*=\s*([\d.eE+-]+))?)");
-    QRegularExpressionMatch iterMatch = iterRe.match(line);
-    if (iterMatch.hasMatch()) {
-        int iteration = iterMatch.captured(1).toInt();
-        double error = iterMatch.captured(2).toDouble();
-        double delta = iterMatch.captured(3).isEmpty() ? 0.0 : iterMatch.captured(3).toDouble();
-        emit progress(iteration, error, delta);
-    }
-
-    // Parse convergence with explicit negative/positive markers.
-    // This avoids false positives from messages like "did not converge".
-    static QRegularExpression nonConvRe(R"((did\s+not\s+converge|not\s+converged|failed\s+to\s+converge))",
-                                        QRegularExpression::CaseInsensitiveOption);
-    static QRegularExpression convRe(R"((\bconverged\b|convergence\s+reached))",
-                                     QRegularExpression::CaseInsensitiveOption);
-
-    if (nonConvRe.match(line).hasMatch()) {
-        lastConverged_ = false;
-    } else if (convRe.match(line).hasMatch()) {
-        lastConverged_ = true;
-    }
 }
 
 QString SimulationRunner::findExecutable(bool useCuda) const
@@ -374,12 +135,10 @@ QString SimulationRunner::findExecutable(bool useCuda) const
     exeName += ".exe";
 #endif
 
-    // If executable path is set, use it
     if (!executablePath_.isEmpty() && QFile::exists(executablePath_)) {
         return executablePath_;
     }
 
-    // Search in common locations
     QStringList searchPaths = {
         QCoreApplication::applicationDirPath() + "/" + exeName,
         QCoreApplication::applicationDirPath() + "/../" + exeName,
@@ -390,12 +149,117 @@ QString SimulationRunner::findExecutable(bool useCuda) const
 
     for (const QString& path : searchPaths) {
         if (QFile::exists(path)) {
-            return QDir::cleanPath(path);
+            return path;
         }
     }
+    return QString();
+}
 
-    // Return just the name and hope it's in PATH
-    return exeName;
+bool SimulationRunner::writeConfigFile(const SimulationConfig& config, const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return false;
+    }
+
+    QTextStream out(&file);
+
+    out << "[grid]\n";
+    out << "nx = " << config.grid.nx << "\n";
+    out << "ny = " << config.grid.ny << "\n";
+    out << "dx = " << config.grid.dx << "\n";
+    out << "dy = " << config.grid.dy << "\n";
+    
+    QString bcStr = "PBC";
+    if (config.boundaryMode == BoundaryMode::W2) bcStr = "W2";
+    else if (config.boundaryMode == BoundaryMode::W4) bcStr = "W4";
+    out << "boundary_mode = " << bcStr << "\n";
+    out << "init_mode = " << config.initMode << "\n\n";
+
+    out << "[physics]\n";
+    out << "temperature = " << config.temperature << "\n";
+    out << "rho1 = " << config.rho1 << "\n";
+    out << "rho2 = " << config.rho2 << "\n";
+    out << "cutoff_radius = " << config.potential.cutoffRadius << "\n\n";
+
+    out << "[interaction]\n";
+    for (int i = 0; i < 3; ++i) {
+        out << "A_11_" << (i+1) << " = " << config.potential.A[0][0][i] << "\n";
+        out << "a_11_" << (i+1) << " = " << config.potential.alpha[0][0][i] << "\n";
+    }
+    for (int i = 0; i < 3; ++i) {
+        out << "A_12_" << (i+1) << " = " << config.potential.A[0][1][i] << "\n";
+        out << "a_12_" << (i+1) << " = " << config.potential.alpha[0][1][i] << "\n";
+    }
+    for (int i = 0; i < 3; ++i) {
+        out << "A_22_" << (i+1) << " = " << config.potential.A[1][1][i] << "\n";
+        out << "a_22_" << (i+1) << " = " << config.potential.alpha[1][1][i] << "\n";
+    }
+    out << "\n";
+
+    out << "[solver]\n";
+    out << "max_iterations = " << config.solver.maxIterations << "\n";
+    out << "tolerance = " << config.solver.tolerance << "\n";
+    out << "xi1 = " << config.solver.xi1 << "\n";
+    out << "xi2 = " << config.solver.xi2 << "\n\n";
+
+    out << "[output]\n";
+    out << "output_dir = output/\n";
+    out << "save_every = " << config.saveEvery << "\n";
+    if (!databasePath_.isEmpty()) {
+        out << "database_path = " << databasePath_ << "\n";
+    }
+
+    return true;
+}
+
+void SimulationRunner::onProcessStarted()
+{
+}
+
+void SimulationRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+{
+    if (exitStatus == QProcess::CrashExit) {
+        emit errorOccurred(tr("Simulation process crashed (exit code %1)").arg(exitCode));
+    }
+    emit finished(lastConverged_, currentRunId_);
+}
+
+void SimulationRunner::onProcessError(QProcess::ProcessError error)
+{
+    if (error == QProcess::FailedToStart) {
+        emit errorOccurred(tr("Failed to start simulation executable"));
+    }
+}
+
+// Re-added to satisfy MOC/Linker
+void SimulationRunner::onProcessReadyRead()
+{
+    while (process_->canReadLine()) {
+        QString line = QString::fromLocal8Bit(process_->readLine()).trimmed();
+        if (line.isEmpty()) continue;
+
+        QTextStream(stdout) << "  [SOLVER] " << line << Qt::endl;
+
+        // UPDATED REGEX: Look for "Created run:"
+        static QRegularExpression runIdRe("Created run:\\s*([a-zA-Z0-9_-]+)");
+        auto match = runIdRe.match(line);
+        if (match.hasMatch()) {
+            currentRunId_ = match.captured(1);
+            emit started(currentRunId_);
+        }
+
+        static QRegularExpression nonConvRe(R"((did\s+not\s+converge|not\s+converged|failed\s+to\s+converge))",
+                                            QRegularExpression::CaseInsensitiveOption);
+        static QRegularExpression convRe(R"((\bconverged\b|convergence\s+reached))",
+                                         QRegularExpression::CaseInsensitiveOption);
+
+        if (nonConvRe.match(line).hasMatch()) {
+            lastConverged_ = false;
+        } else if (convRe.match(line).hasMatch()) {
+            lastConverged_ = true;
+        }
+    }
 }
 
 } // namespace salr
