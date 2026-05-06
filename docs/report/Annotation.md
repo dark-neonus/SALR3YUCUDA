@@ -43,6 +43,8 @@ Directory with figures, plots, and supporting images used in the report.
 ###### Mermaid_Chart.png
 SALR pair-potential illustration used in the introduction. It shows the attractive head and repulsive tail of a mermaid-style interaction and is reproduced from the Royall article. Taken from royallHuntingMermaidsSoftMatter2018.
 
+<!-- Starting from here figures are outdated and should be removed from report and from files -->
+
 ###### PBC_2D.png
 2D heatmap for the periodic-boundary-condition case. It shows stripe-like microphase separation for the chosen parameter set.
 Runned for parameter_set_1:
@@ -139,6 +141,8 @@ Speedup-analysis figure showing how CUDA compares to CPU baselines across differ
 
 ###### placeholder.png
 Minimal placeholder image. It is used as a stand-in asset when a final GUI screenshot or another illustration is not yet available.
+
+<!-- Here is the end of outdated figures -->
 
 
 <!-- TODO: Add starting conditions visualization -->
