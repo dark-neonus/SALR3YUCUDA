@@ -6,6 +6,7 @@
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
+\usepackage{tabularx}
 \usepackage{hyperref}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -450,21 +451,23 @@ All benchmark CSV files record the same grid sizes ($N=16$ to $160$). EPYC threa
 
 Cluster hardware details captured by the benchmark logs are summarized in Table~\ref{tab:cluster_hw}. Additional properties such as cache sizes, memory types, and GPU bandwidth were not recorded and remain to be filled.
 
-\begin{table}[htbp]
+\begin{table*}[t]
 \caption{Cluster hardware used for benchmarks}
+\label{tab:cluster_hw}
 \begin{center}
-\begin{tabular}{|l|l|c|l|c|}
+\begin{tabularx}{\textwidth}{|l|X|c|l|c|}
 \hline
 \textbf{Node} & \textbf{CPU model} & \textbf{Cores} & \textbf{GPU} & \textbf{VRAM} \\
 \hline
 EPYC node & AMD EPYC 9754 & 256 & None & N/A \\
+\hline
 Threadripper CPU & AMD Threadripper PRO 5975WX & 32 & None & N/A \\
+\hline
 Threadripper GPU & AMD Threadripper PRO 5975WX & 32 & NVIDIA GeForce RTX 5090 & 32607 MiB \\
 \hline
-\end{tabular}
-\label{tab:cluster_hw}
+\end{tabularx}
 \end{center}
-\end{table}
+\end{table*}
 
 \subsection{Performance across cluster nodes}
 
