@@ -347,19 +347,27 @@ Figure~\ref{fig:w4_rep} shows a representative W4 snapshot from the current resu
 
 \subsubsection{Measured metrics}
 
-We focus on two primary metrics: wall time per run and speedup. Speedup is reported as $S = t_{CPU} / t_{CUDA}$ or relative to a single CPU thread when comparing OpenMP scaling.
+We focus on two primary metrics: \textit{execution time} and \textit{speedup}.
+
+\textbf{Execution time} is measured as the total wall-clock time from the start of the iteration loop to convergence (or the maximum iteration limit). It is the most direct indicator of solver efficiency and directly determines how quickly a researcher can sweep across the parameter space. Disk I/O is excluded to isolate the compute-only cost.
+
+\textbf{Speedup} is defined as:
+\begin{equation}
+S = \frac{t_{\text{ref}}}{t_{\text{target}}}
+\end{equation}
+where $t_{\text{ref}}$ is the reference execution time (typically single-thread CPU or a fixed baseline) and $t_{\text{target}}$ is the execution time of the configuration under evaluation. We report two kinds of speedup: CUDA over CPU (to quantify GPU benefit) and multi-thread CPU over single-thread CPU (to quantify OpenMP scaling efficiency). These two metrics together reveal both absolute performance gains and scaling behavior as compute resources increase.
 
 \subsubsection{Benchmark parameters and hardware}
 
-The performance benchmarks use the dedicated benchmark configuration (I/O disabled) with the same physical parameters as the default solver configuration. Grid sizes and thread counts follow the measured dataset from the laptop benchmark logs:
+The performance benchmarks use a dedicated benchmark configuration with disk I/O disabled. The same physical parameters as the default solver run are used. Grid sizes and thread counts follow the measured dataset from the laptop benchmark logs:
 
 \begin{itemize}
-    \item Grid sizes: $N \in \{16, 32, 64, 128, 160, 256, 320\}$.
+    \item Grid sizes: $N \in \{16, 32, 64, 128, 160, 256, 320\}$ (square grids, $N \times N$ nodes).
     \item CPU threads: $\{1, 2, 4, 8, 12, 16, 20\}$ and CUDA on the GPU.
     \item Max iterations: $1000$, tolerance $10^{-8}$, boundary mode PBC, init mode sinusoids.
 \end{itemize}
 
-Laptop hardware used for the benchmark run is summarized in Table~\ref{tab:laptop_hw}. Several low-level hardware properties were not captured in the logs and are left as placeholders.
+Laptop hardware used for the benchmark run is summarized in Table~\ref{tab:laptop_hw}. The CPU is an Intel Core i7-13700H featuring a hybrid architecture with 6 performance cores (P-cores, optimized for single-thread throughput at up to 5.0~GHz) and 8 efficiency cores (E-cores, optimized for parallelism at lower power), totaling 20 logical threads under HyperThreading. The three-level cache hierarchy (L1/L2 per-core, shared L3) determines data reuse efficiency for the convolution loops. The DDR5-4800 memory provides high bandwidth for large grid transfers. The GPU is an NVIDIA RTX 4060 Laptop based on the Ada Lovelace architecture. Its 3072 CUDA cores execute floating-point operations in massively parallel warps. The 8~GB GDDR6 VRAM with 128-bit bus delivers 272~GB/s bandwidth, which is the main performance bottleneck for the memory-bound convolution kernel. The GPU L2 cache (24~MiB) helps reuse potential table data across thread blocks. Peak FP32 throughput is 14.55~TFLOPS, roughly $35\times$ the CPU peak.
 
 \begin{table}[htbp]
 \caption{Laptop hardware used for benchmarks}
@@ -392,7 +400,9 @@ GPU cache (L2) & 24 MiB \\
 
 \subsubsection{Methodology}
 
-Each $(N, \text{threads})$ configuration was executed three times, and the benchmark script wrote the aggregated wall time to CSV. Disk I/O was disabled via a large save interval to ensure timing reflects compute only. CUDA and CPU runs use the same grid and physical parameters.
+Each $(N, \text{threads})$ configuration was executed three times, and the median wall time was recorded to CSV by the benchmark script. Taking the median over three runs reduces the effect of transient OS scheduling noise and cache warm-up variation. Disk I/O was disabled via a large save interval so that timing captures only compute. CUDA and CPU runs use identical grids, physical parameters, and convergence criteria to ensure fair comparison.
+
+Speedup values are computed post-hoc from the CSV data. For CUDA vs. CPU comparisons, the single-thread CPU time at each grid size serves as the baseline. For OpenMP scaling, the 1-thread CPU time at each grid size is the reference. Grid sizes for which only CUDA data exist (no CPU measurement at that $N$) are included in the CUDA curves but excluded from speedup ratios that require a CPU counterpart.
 
 \subsubsection{Benchmark results}
 
@@ -402,23 +412,23 @@ Figure~\ref{fig:laptop_speedup} shows CUDA speedup versus each CPU baseline and 
 
 The convergence check in Figure~\ref{fig:laptop_real_params} confirms that CPU and CUDA reach the same tolerance and iteration count for the default physical parameters.
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/performance_comparison.png}}
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/performance_comparison.png}}
 \caption{Laptop benchmark runtime for CUDA and CPU across grid sizes.}
 \label{fig:laptop_perf}
-\end{figure*}
+\end{figure}
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/speedup_analysis.png}}
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/speedup_analysis.png}}
 \caption{Laptop benchmark speedups: CUDA over CPU (left) and CPU OpenMP scaling (right).}
 \label{fig:laptop_speedup}
-\end{figure*}
+\end{figure}
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/performance_real_params_laptop.png}}
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/performance_real_params_laptop.png}}
 \caption{Laptop convergence comparison for default physical parameters. CPU and CUDA converge to the same error threshold with identical iteration counts.}
 \label{fig:laptop_real_params}
-\end{figure*}
+\end{figure}
 
 %--------------------------
 \section{Results on Cluster}
@@ -438,7 +448,7 @@ All benchmark CSV files record the same grid sizes ($N=16$ to $160$). EPYC threa
 
 \subsection{Hardware summary}
 
-Cluster hardware details captured by the benchmark logs are summarized in Table~\ref{tab:cluster_hw}. Additional properties such as cache sizes, memory types, and GPU bandwidth were not recorded and remain to be filled.
+Cluster hardware details captured by the benchmark logs are summarized in Table~\ref{tab:cluster_hw}. The AMD EPYC 9754 is a server-grade processor in a dual-socket configuration (2$\times$128 cores, 256 cores total), designed for high-core-count parallel workloads. Its large core count allows the OpenMP convolution to distribute across many threads with minimal per-thread overhead. The AMD Threadripper PRO 5975WX is a workstation processor with 32 cores (64 threads), well suited for compute-intensive desktop workloads. The RTX 5090 is NVIDIA's flagship Blackwell-generation GPU with 32~GB of VRAM, enabling very large grid runs and significantly higher theoretical throughput than the RTX 4060 Laptop. Additional hardware properties such as cache sizes and memory bandwidth for the cluster nodes were not recorded by the benchmark logs.
 
 \begin{table*}[t]
 \caption{Cluster hardware used for benchmarks. Nodes were allocated exclusively to ensure clean timing results.}
@@ -460,41 +470,45 @@ gnode-003 (\texttt{job-parallel-gpu}) & AMD Threadripper PRO 5975WX & 32 & 1 (ho
 
 \subsection{Performance across cluster nodes}
 
-Figure~\ref{fig:cluster_cpu_log} compares the best CPU time per grid size across laptop and cluster nodes. Figure~\ref{fig:cluster_thread_speedup} summarizes OpenMP scaling at the largest measured grid size. Figures~\ref{fig:cluster_gpu_runtime} and~\ref{fig:cluster_speedup} show GPU versus CPU performance and speedup relative to the laptop baseline.
+Figure~\ref{fig:cluster_cpu_log} compares the best CPU time per grid size across the laptop and cluster nodes on a log scale. The EPYC 9754 achieves the lowest CPU runtimes due to its high core count, with 64-thread scaling yielding the best absolute times. The Threadripper PRO 5975WX shows intermediate performance with up to 16 threads.
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/cpu_runtime_log.png}}
+Figure~\ref{fig:cluster_thread_speedup} summarizes OpenMP thread-scaling speedup at the largest available grid size for each machine. The EPYC node scales to 64 threads; the Threadripper node reaches 16. Both plateau well below the linear ideal, consistent with the memory-bound nature of the $O(N^2)$ convolution.
+
+Figures~\ref{fig:cluster_gpu_runtime} and~\ref{fig:cluster_speedup} compare GPU versus CPU runtimes and show speedup of each machine relative to the single-thread laptop baseline. The RTX 5090 on the cluster GPU node delivers the best GPU performance, reflecting both the larger VRAM and higher CUDA throughput compared to the laptop RTX 4060.
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/cpu_runtime_log.png}}
 \caption{Best CPU runtime across laptop and cluster machines (log scale).}
 \label{fig:cluster_cpu_log}
-\end{figure*}
+\end{figure}
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/thread_scaling_speedup.png}}
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/thread_scaling_speedup.png}}
 \caption{OpenMP speedup versus single-thread baseline for the largest available grid size.}
 \label{fig:cluster_thread_speedup}
-\end{figure*}
+\end{figure}
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/gpu_runtime.png}}
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/gpu_runtime.png}}
 \caption{GPU and CPU runtime comparison across machines. CPU-only nodes are shown without GPU curves.}
 \label{fig:cluster_gpu_runtime}
-\end{figure*}
+\end{figure}
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/speedup_vs_laptop.png}}
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/speedup_vs_laptop.png}}
 \caption{Speedup of each machine relative to the laptop single-thread baseline.}
 \label{fig:cluster_speedup}
-\end{figure*}
+\end{figure}
 
 \subsection{Convergence check on the cluster GPU}
 
 Figure~\ref{fig:cluster_real_params} summarizes the convergence comparison for the RTX 5090 run with a single-thread CPU baseline. The iteration counts and final error match, confirming numerical equivalence between CPU and CUDA implementations.
 
-\begin{figure*}[t]
-\centerline{\includegraphics[width=\textwidth]{src/performance_real_params_cluster.png}}
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=\columnwidth]{src/performance_real_params_cluster.png}}
 \caption{Cluster convergence comparison for default physical parameters (Threadripper PRO 5975WX with RTX 5090).}
 \label{fig:cluster_real_params}
-\end{figure*}
+\end{figure}
 
 %--------------------------
 \section{Discussion}
