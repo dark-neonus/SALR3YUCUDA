@@ -175,6 +175,8 @@ def make_combined_figure(
     cmap1: str = _CMAP1,
     cmap2: str = _CMAP2,
     trim: int = 0,
+    view_elev: int = 30,
+    view_azim: int = -60,
 ):
     """
     Create a 2×2 combined figure:
@@ -215,8 +217,10 @@ def make_combined_figure(
     # -- Row 2: 3D scatter (δρ) --
     ax3 = fig.add_subplot(2, 2, 3, projection="3d")
     ax4 = fig.add_subplot(2, 2, 4, projection="3d")
-    _plot_3d_panel(ax3, xs1, ys1, rho1, cmap1, "Species 1", vmin1, vmax1, trim=trim)
-    _plot_3d_panel(ax4, xs2, ys2, rho2, cmap2, "Species 2", vmin2, vmax2, trim=trim)
+    _plot_3d_panel(ax3, xs1, ys1, rho1, cmap1, "Species 1", vmin1, vmax1,
+                   trim=trim, view_elev=view_elev, view_azim=view_azim)
+    _plot_3d_panel(ax4, xs2, ys2, rho2, cmap2, "Species 2", vmin2, vmax2,
+                   trim=trim, view_elev=view_elev, view_azim=view_azim)
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.savefig(dest_path, dpi=dpi, bbox_inches="tight")
@@ -248,6 +252,10 @@ def main():
     parser.add_argument("--cmap2", default=_CMAP2, help="Colormap for species 2 (default: Reds)")
     parser.add_argument("--trim", type=int, default=0,
                         help="Trim N boundary cells from each edge (use for wall BC modes)")
+    parser.add_argument("--view-elev", type=int, default=30, dest="view_elev",
+                        help="3D scatter elevation angle (default: 30)")
+    parser.add_argument("--view-azim", type=int, default=-60, dest="view_azim",
+                        help="3D scatter azimuth angle (default: -60)")
     args = parser.parse_args()
 
     data_dir = os.path.join(args.output_dir, "data")
@@ -271,6 +279,8 @@ def main():
         cmap1=args.cmap1,
         cmap2=args.cmap2,
         trim=args.trim,
+        view_elev=args.view_elev,
+        view_azim=args.view_azim,
     )
 
 

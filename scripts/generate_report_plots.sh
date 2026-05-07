@@ -227,13 +227,13 @@ for entry in "${SCENARIOS[@]}"; do
     plot_title="${TITLES[$name]}"
     [[ "$solver_ok" -eq 0 ]] && plot_title="${plot_title} (partial, not converged)"
 
-    # Use high-contrast diverging colormaps for wall boundary modes
-    # and trim boundary cells that have forced BC values
+    # Use high-contrast diverging colormaps for wall boundary modes,
+    # trim boundary cells, and use a side-on view to show the x-profile clearly
     cmap_args=()
     if [[ "$boundary" == W* ]]; then
         local trim_cells=5
         [[ "$boundary" == "W4" ]] && trim_cells=6
-        cmap_args=(--cmap1 RdBu_r --cmap2 PuOr --trim "$trim_cells")
+        cmap_args=(--cmap1 RdBu_r --cmap2 PuOr --trim "$trim_cells" --view-azim 0 --view-elev 20)
     fi
 
     # Generate the scientific figure
