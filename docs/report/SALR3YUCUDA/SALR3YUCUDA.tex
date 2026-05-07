@@ -81,7 +81,7 @@ These properties make mean-field DFT the method of choice for initial reconnaiss
 
 \subsection{SALR Interactions}
 
-Short-range attraction and long-range repulsion (SALR) interactions arise naturally in colloidal systems where particles experience depletion attraction at short distances (due to polymer or small particle exclusion) and electrostatic repulsion at longer distances~\cite{royall2018}. The competition between these interactions leads to complex energy landscapes and the possibility of microphase separation, where the system forms periodic structures such as clusters, stripes, or lamellae rather than undergoing bulk phase separation.
+Short-range attraction and long-range repulsion (SALR) interactions arise naturally in colloidal systems where particles experience depletion attraction at short distances (due to polymer or small particle exclusion) and electrostatic repulsion at longer distances~\cite{royall2018}. The competition between these interactions leads to complex energy landscapes and the possibility of microphase separation, where the system forms periodic structures such as clusters, stripes, or lamellae rather than undergoing bulk phase separation. Of particular relevance to the present work, Kravtsiv et al.\ showed that soft-core fluids with competing interactions confined near hard walls exhibit enhanced cluster formation relative to the bulk, with distinct density layering driven purely by confinement geometry~\cite{kravtsiv2022soft}. This motivates our inclusion of hard-wall boundary conditions as a physically meaningful test case for the solver.
 
 \subsection{Three-Yukawa Potential}
 
@@ -369,19 +369,21 @@ Laptop hardware used for the benchmark run is summarized in Table~\ref{tab:lapto
 \textbf{Parameter} & \textbf{Value} \\
 \hline
 CPU model & Intel Core i7-13700H \\
-CPU cores or threads & 20 threads \\
-CPU frequency & TODO \\
-CPU cache (L1, L2, L3) & TODO \\
-RAM size and type & TODO \\
+CPU cores / threads & 14 cores (6P + 8E) / 20 threads \\
+CPU max frequency & 5.0 GHz \\
+L1d / L1i cache & 544 KiB / 704 KiB (14 instances) \\
+L2 cache & 11.5 MiB (8 instances) \\
+L3 cache & 24 MiB (shared) \\
+RAM & 16 GB DDR5-4800 (2$\times$8 GB SODIMM) \\
 GPU model & NVIDIA GeForce RTX 4060 Laptop GPU \\
-GPU architecture & TODO \\
-GPU core count & TODO \\
-GPU clock speed & TODO \\
-VRAM capacity & 8188 MiB \\
-VRAM type and bus width & TODO \\
-Memory bandwidth & TODO \\
-Throughput (TFLOPS) & TODO \\
-GPU cache levels & TODO \\
+GPU architecture & Ada Lovelace \\
+CUDA cores & 3072 \\
+GPU boost clock & 2370 MHz \\
+VRAM capacity & 8 GB GDDR6 \\
+VRAM bus width & 128-bit \\
+Memory bandwidth & 272 GB/s \\
+FP32 throughput & 14.55 TFLOPS \\
+GPU cache (L2) & 24 MiB \\
 \hline
 \end{tabular}
 \label{tab:laptop_hw}
@@ -400,36 +402,23 @@ Figure~\ref{fig:laptop_speedup} shows CUDA speedup versus each CPU baseline and 
 
 The convergence check in Figure~\ref{fig:laptop_real_params} confirms that CPU and CUDA reach the same tolerance and iteration count for the default physical parameters.
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/performance_comparison.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/performance_comparison.png}}
 \caption{Laptop benchmark runtime for CUDA and CPU across grid sizes.}
 \label{fig:laptop_perf}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/speedup_analysis.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/speedup_analysis.png}}
 \caption{Laptop benchmark speedups: CUDA over CPU (left) and CPU OpenMP scaling (right).}
 \label{fig:laptop_speedup}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/performance_real_params_laptop.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/performance_real_params_laptop.png}}
 \caption{Laptop convergence comparison for default physical parameters. CPU and CUDA converge to the same error threshold with identical iteration counts.}
 \label{fig:laptop_real_params}
-\end{figure}
-
-\subsection{Missing assets}
-
-The following images are required to complete the random and sinusoidal starting condition sections. Once added, replace the placeholders above and remove this list.
-
-\begin{itemize}
-    \item src/pbc-random.png
-    \item src/pbc-sinusoidal.png
-    \item src/w2-random.png
-    \item src/w2-sinusoidal.png
-    \item src/w4-random.png
-    \item src/w4-sinusoidal.png
-\end{itemize}
+\end{figure*}
 
 %--------------------------
 \section{Results on Cluster}
@@ -452,18 +441,18 @@ All benchmark CSV files record the same grid sizes ($N=16$ to $160$). EPYC threa
 Cluster hardware details captured by the benchmark logs are summarized in Table~\ref{tab:cluster_hw}. Additional properties such as cache sizes, memory types, and GPU bandwidth were not recorded and remain to be filled.
 
 \begin{table*}[t]
-\caption{Cluster hardware used for benchmarks}
+\caption{Cluster hardware used for benchmarks. Nodes were allocated exclusively to ensure clean timing results.}
 \label{tab:cluster_hw}
 \begin{center}
-\begin{tabularx}{\textwidth}{|l|X|c|l|c|}
+\begin{tabularx}{\textwidth}{|l|X|c|c|l|c|}
 \hline
-\textbf{Node} & \textbf{CPU model} & \textbf{Cores} & \textbf{GPU} & \textbf{VRAM} \\
+\textbf{Node (queue)} & \textbf{CPU model} & \textbf{CPU cores} & \textbf{Max threads used} & \textbf{GPU} & \textbf{VRAM} \\
 \hline
-EPYC node & AMD EPYC 9754 & 256 & None & N/A \\
+node-003 (\texttt{job-parallel-node}) & AMD EPYC 9754 & 256 (2$\times$128) & 64 & None & N/A \\
 \hline
-Threadripper CPU & AMD Threadripper PRO 5975WX & 32 & None & N/A \\
+gnode-003 (\texttt{job-parallel-gnode}) & AMD Threadripper PRO 5975WX & 32 & 16 & None & N/A \\
 \hline
-Threadripper GPU & AMD Threadripper PRO 5975WX & 32 & NVIDIA GeForce RTX 5090 & 32607 MiB \\
+gnode-003 (\texttt{job-parallel-gpu}) & AMD Threadripper PRO 5975WX & 32 & 1 (host) & NVIDIA GeForce RTX 5090 & 32607 MiB \\
 \hline
 \end{tabularx}
 \end{center}
@@ -473,39 +462,39 @@ Threadripper GPU & AMD Threadripper PRO 5975WX & 32 & NVIDIA GeForce RTX 5090 & 
 
 Figure~\ref{fig:cluster_cpu_log} compares the best CPU time per grid size across laptop and cluster nodes. Figure~\ref{fig:cluster_thread_speedup} summarizes OpenMP scaling at the largest measured grid size. Figures~\ref{fig:cluster_gpu_runtime} and~\ref{fig:cluster_speedup} show GPU versus CPU performance and speedup relative to the laptop baseline.
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/cpu_runtime_log.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/cpu_runtime_log.png}}
 \caption{Best CPU runtime across laptop and cluster machines (log scale).}
 \label{fig:cluster_cpu_log}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/thread_scaling_speedup.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/thread_scaling_speedup.png}}
 \caption{OpenMP speedup versus single-thread baseline for the largest available grid size.}
 \label{fig:cluster_thread_speedup}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/gpu_runtime.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/gpu_runtime.png}}
 \caption{GPU and CPU runtime comparison across machines. CPU-only nodes are shown without GPU curves.}
 \label{fig:cluster_gpu_runtime}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/speedup_vs_laptop.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/speedup_vs_laptop.png}}
 \caption{Speedup of each machine relative to the laptop single-thread baseline.}
 \label{fig:cluster_speedup}
-\end{figure}
+\end{figure*}
 
 \subsection{Convergence check on the cluster GPU}
 
 Figure~\ref{fig:cluster_real_params} summarizes the convergence comparison for the RTX 5090 run with a single-thread CPU baseline. The iteration counts and final error match, confirming numerical equivalence between CPU and CUDA implementations.
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=\columnwidth]{src/performance_real_params_cluster.png}}
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{src/performance_real_params_cluster.png}}
 \caption{Cluster convergence comparison for default physical parameters (Threadripper PRO 5975WX with RTX 5090).}
 \label{fig:cluster_real_params}
-\end{figure}
+\end{figure*}
 
 %--------------------------
 \section{Discussion}
