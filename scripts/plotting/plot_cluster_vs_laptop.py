@@ -64,9 +64,15 @@ MACHINE_LABELS: Dict[str, str] = {
     'laptop':     'Laptop (i7-13700H)',
     'epyc':       'Cluster EPYC 9754',
     'tr':         'Cluster Threadripper 5975WX',
-    'laptop_gpu': 'Laptop RTX 4060',
-    'epyc_gpu':   'Cluster RTX (EPYC node)',
-    'tr_gpu':     'Cluster RTX 5090',
+    'laptop_gpu': 'RTX 4060',
+    'epyc_gpu':   'RTX (EPYC node)',
+    'tr_gpu':     'RTX 5090',
+}
+
+MACHINE_CPU_NAMES: Dict[str, str] = {
+    'laptop': 'i7-13700H',
+    'epyc':   'EPYC 9754',
+    'tr':     'Threadripper 5975WX',
 }
 
 
@@ -387,24 +393,29 @@ def plot_gpu_speedup(datasets: Dict[str, BenchData], out_dir: Path) -> None:
     gpu_key_map = {'laptop': 'laptop_gpu', 'epyc': 'epyc_gpu', 'tr': 'tr_gpu'}
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.set_title('GPU Speedup over CPU (same machine)')
+    ax.set_title('GPU Speedup over CPU')
     ax.set_xlabel('Grid size N (N×N)')
     ax.set_ylabel('Speedup factor')
 
     all_xs: set = set()
     for name, data in gpu_machines.items():
         gpu_style = MACHINE_STYLES.get(gpu_key_map.get(name, 'laptop_gpu'))
-        gpu_label = MACHINE_LABELS.get(gpu_key_map.get(name, ''), f'{name} GPU')
+        gpu_name = MACHINE_LABELS.get(gpu_key_map.get(name, ''), f'{name} GPU')
+        cpu_name = MACHINE_CPU_NAMES.get(name, name)
 
         xs = sorted(data['cuda'].keys())
         speedups = []
         valid_xs = []
+        max_threads = 0
         for nx in xs:
             gpu_t = data['cuda'].get(nx)
-            cpu_t, _ = best_cpu_time(data, nx)
+            cpu_t, th = best_cpu_time(data, nx)
             if gpu_t and cpu_t:
                 speedups.append(cpu_t / gpu_t)
                 valid_xs.append(nx)
+                if th and th > max_threads:
+                    max_threads = th
+        gpu_label = f'{gpu_name} vs {cpu_name} ({max_threads}T)' if max_threads else gpu_name
 
         if valid_xs:
             ax.plot(valid_xs, speedups, color=gpu_style['color'], marker=gpu_style['marker'],
@@ -417,6 +428,43 @@ def plot_gpu_speedup(datasets: Dict[str, BenchData], out_dir: Path) -> None:
     ax.legend()
     fig.tight_layout()
     _save(fig, out_dir, 'gpu_speedup')
+    plt.close(fig)
+
+
+# ── GPU-only comparison ──────────────────────────────────────────────────────
+
+def plot_gpu_only_comparison(datasets: Dict[str, BenchData], out_dir: Path) -> None:
+    """Plot GPU runtimes across machines (no CPU lines), with speedup ratio annotations."""
+    gpu_machines = {name: data for name, data in datasets.items() if data['cuda']}
+    if len(gpu_machines) < 2:
+        print('  [skip] gpu_only_comparison: need at least 2 machines with CUDA data')
+        return
+
+    gpu_key_map = {'laptop': 'laptop_gpu', 'epyc': 'epyc_gpu', 'tr': 'tr_gpu'}
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.set_title('GPU Runtime Comparison')
+    ax.set_xlabel('Grid size N (N×N)')
+    ax.set_ylabel('Wall time (s)')
+    ax.set_yscale('log')
+
+    series: Dict[str, Tuple[List[int], List[float]]] = {}
+    all_xs: set = set()
+    for name, data in gpu_machines.items():
+        gpu_style = MACHINE_STYLES.get(gpu_key_map.get(name, 'laptop_gpu'))
+        gpu_name = MACHINE_LABELS.get(gpu_key_map.get(name, ''), f'{name} GPU')
+        xs = sorted(data['cuda'].keys())
+        ys = [data['cuda'][nx] for nx in xs]
+        ax.plot(xs, ys, color=gpu_style['color'], marker=gpu_style['marker'],
+                ls=gpu_style['ls'], linewidth=2, markersize=7, label=gpu_name)
+        series[name] = (xs, ys)
+        all_xs.update(xs)
+
+    if all_xs:
+        _grid_axis(ax, sorted(all_xs))
+    ax.legend()
+    fig.tight_layout()
+    _save(fig, out_dir, 'gpu_only_comparison')
     plt.close(fig)
 
 
@@ -497,6 +545,7 @@ def main() -> int:
     plot_speedup_vs_baseline(datasets, out_dir)
     plot_gpu_runtime(datasets, out_dir)
     plot_gpu_speedup(datasets, out_dir)
+    plot_gpu_only_comparison(datasets, out_dir)
     write_summary(datasets, out_dir)
 
     print('\nDone.')
